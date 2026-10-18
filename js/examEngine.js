@@ -156,11 +156,14 @@ export function blankResponse(question) {
   }
 }
 
-// Whether the response contains any input. Ordering always holds *some* arrangement,
-// so the UI decides "answered" for it by whether the question was ever viewed.
+// Whether the response contains any input. Ordering always holds *some* arrangement;
+// it counts as answered once moved away from the shuffled start, which is never
+// fully correct, so a correct answer always requires reordering.
 export function hasAnyAnswer(question, response) {
   if (response == null) return false;
   switch (question.type) {
+    case "ordering":
+      return response.length === question.items.length && response.join() !== (question.displayOrder || []).join();
     case "matching":
       return response.some((v) => v !== null && v !== undefined);
     case "fill_blank":

@@ -12,6 +12,7 @@ import {
   clearSession,
 } from "./storage.js";
 import { validateQuestionSet, BLANK_TOKEN } from "./validation.js";
+import { confirmDialog, alertDialog, dismissAllDialogs } from "./dialog.js";
 import {
   buildPool,
   poolStatsByObjective,
@@ -38,7 +39,7 @@ const state = {
   sets: [], // { id, setName, questions, builtin? }
   enabledSetIds: new Set(["builtin"]),
   selectedObjectives: new Set(allObjectiveIds()),
-  // exam session: { questions, answers:{[_key]: response}, marked:Set, visited:Set, index, timerEnabled, endsAt }
+  // exam session: { questions, answers:{[_key]: response}, marked:Set, index, timerEnabled, endsAt }
   session: null,
 };
 
@@ -104,8 +105,8 @@ function renderSetsPanel() {
       !set.builtin
         ? ce("button", {
             class: "btn-link danger",
-            onclick: () => {
-              if (!confirm(`Remove set "${set.setName}"?`)) return;
+            onclick: async () => {
+              if (!(await confirmDialog(`Remove set "${set.setName}"?`, { confirmText: "Remove", danger: true }))) return;
               removeUploadedSet(set.id);
               state.sets = loadUploadedSets();
               state.enabledSetIds.delete(set.id);
@@ -339,7 +340,7 @@ function showUploadResult(result) {
         onclick: () => {
           const newSet = { id: `up-${Date.now()}`, setName: result.set.setName, questions: result.set.questions };
           if (!addUploadedSet(newSet)) {
-            alert("Could not save this set: browser storage is full or disabled. Remove an older set and try again.");
+            alertDialog("Could not save this set: browser storage is full or disabled. Remove an older set and try again.");
             return;
           }
           state.sets = loadUploadedSets();
@@ -393,7 +394,6 @@ function beginSession(questions, endsAt) {
     questions,
     answers: Object.fromEntries(questions.map((q) => [q._key, blankResponse(q)])),
     marked: new Set(),
-    visited: new Set(),
     index: 0,
     timerEnabled: endsAt != null,
     partialCredit: el("#partial-toggle").checked,
@@ -409,6 +409,7 @@ function enterExam() {
 }
 
 function endSession() {
+  dismissAllDialogs();
   stopTimer();
   clearSession();
   state.session = null;
@@ -417,22 +418,26 @@ function endSession() {
 function persistSession() {
   const s = state.session;
   if (!s) return;
-  saveSession({ ...s, marked: [...s.marked], visited: [...s.visited] });
+  saveSession({ ...s, marked: [...s.marked] });
 }
 
 // Offers to restore an exam that was in progress when the page was reloaded or closed.
-function resumeSavedSession() {
+async function resumeSavedSession() {
   const saved = loadSession();
   if (!saved || !Array.isArray(saved.questions) || saved.questions.length === 0) return false;
   const expired = saved.endsAt != null && Date.now() >= saved.endsAt;
   const prompt = expired
     ? "Your previous timed exam ran out of time while the page was closed. Submit it now and see the results?"
     : `Resume your unfinished exam (question ${saved.index + 1} of ${saved.questions.length})?`;
-  if (!confirm(prompt)) {
+  const ok = await confirmDialog(prompt, {
+    confirmText: expired ? "Submit" : "Resume",
+    cancelText: expired ? "Discard" : "Start over",
+  });
+  if (!ok) {
     clearSession();
     return false;
   }
-  state.session = { ...saved, marked: new Set(saved.marked || []), visited: new Set(saved.visited || []) };
+  state.session = { ...saved, marked: new Set(saved.marked || []) };
   enterExam();
   return true;
 }
@@ -479,7 +484,6 @@ function renderExam() {
   const s = state.session;
   const q = s.questions[s.index];
   if (!(q._key in s.answers)) s.answers[q._key] = blankResponse(q);
-  s.visited.add(q._key);
 
   el("#exam-progress").textContent = `Question ${s.index + 1} of ${s.questions.length}`;
   el("#exam-timer-wrap").style.display = s.timerEnabled ? "inline-block" : "none";
@@ -513,7 +517,7 @@ function setAnswer(s, q, response) {
 }
 
 function isAnswered(s, q) {
-  return q.type === "ordering" ? s.visited.has(q._key) : hasAnyAnswer(q, s.answers[q._key]);
+  return hasAnyAnswer(q, s.answers[q._key]);
 }
 
 const QUESTION_RENDERERS = {
@@ -753,16 +757,18 @@ function renderPalette() {
   });
 }
 
-function finishExam() {
+async function finishExam() {
   const s = state.session;
   if (!s) return;
   const unanswered = s.questions.filter((q) => !isAnswered(s, q)).length;
   const timeLeft = s.endsAt == null || Date.now() < s.endsAt;
   if (unanswered > 0 && timeLeft) {
-    if (!confirm(`${unanswered} question(s) are unanswered. Submit anyway?`)) return;
+    const ok = await confirmDialog(`${unanswered} question(s) are unanswered. Submit anyway?`, { confirmText: "Submit" });
+    // The timer may have expired and submitted this session while the dialog was open.
+    if (!ok || state.session !== s) return;
   }
   // Unanswered questions (same rule as the palette and the warning above) are submitted
-  // empty: otherwise an unopened ordering question's shuffled default, or a simulation's
+  // empty: otherwise an untouched ordering question's shuffled default, or a simulation's
   // untouched checkboxes that happen to match "unchecked", would earn partial credit.
   const answers = { ...s.answers };
   for (const q of s.questions) if (!isAnswered(s, q)) answers[q._key] = [];
@@ -939,7 +945,7 @@ function exportResultsCSV(result) {
   const summaryLine = ["Score", `${number(result.points)}/${result.total} (${number(result.percent)}%)`, ...Array(header.length - 2).fill("")];
   const csv = [header, summaryLine, ...rows].map((r) => r.map((v) => csvEscape(v, delimiter)).join(delimiter)).join("\r\n");
   // BOM so Excel detects UTF-8 (otherwise "→" and non-Latin text are garbled).
-  downloadFile(`sy0-701-results-${timestampForFilename()}.csv`, "﻿" + csv, "text/csv;charset=utf-8");
+  downloadFile(`sy0-701-results-${timestampForFilename()}.csv`, "\uFEFF" + csv, "text/csv;charset=utf-8");
 }
 
 const REVIEW_BODY_RENDERERS = {
@@ -1050,7 +1056,7 @@ function renderReviewDetails(result, onlyIncorrect) {
 function retakeMissed(result) {
   const missed = result.details.filter((d) => !d.correct).map((d) => d.question);
   if (missed.length === 0) {
-    alert("No missed questions — great job!");
+    alertDialog("No missed questions — great job!");
     return;
   }
   beginSession(prepareSessionQuestions(missed, { shuffleOptions: el("#shuffle-options").checked }), null);
@@ -1060,17 +1066,23 @@ function retakeMissed(result) {
 
 // Leaving the exam page mid-attempt would otherwise leave the timer running in the
 // background and auto-submit later from whatever page the user is on.
-function confirmQuitExam() {
+async function confirmQuitExam() {
   if (!state.session) return true;
-  if (!confirm("Quit this exam attempt without scoring? Progress will be lost.")) return false;
+  const s = state.session;
+  const ok = await confirmDialog("Quit this exam attempt without scoring? Progress will be lost.", {
+    confirmText: "Quit exam",
+    cancelText: "Keep going",
+    danger: true,
+  });
+  if (!ok || state.session !== s) return false;
   endSession();
   return true;
 }
 
 function wireNav() {
   elAll(".nav-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (confirmQuitExam()) showPage(btn.dataset.page);
+    btn.addEventListener("click", async () => {
+      if (await confirmQuitExam()) showPage(btn.dataset.page);
     });
   });
   el("#back-to-setup-btn").addEventListener("click", () => showPage("page-setup"));
@@ -1117,8 +1129,8 @@ function wireExam() {
     renderExam();
   });
   el("#finish-btn").addEventListener("click", finishExam);
-  el("#quit-exam-btn").addEventListener("click", () => {
-    if (confirmQuitExam()) showPage("page-setup");
+  el("#quit-exam-btn").addEventListener("click", async () => {
+    if (await confirmQuitExam()) showPage("page-setup");
   });
 }
 
@@ -1129,7 +1141,7 @@ function wireInstructions() {
       el("#copy-prompt-btn").textContent = "Copied!";
       setTimeout(() => (el("#copy-prompt-btn").textContent = "Copy full instructions + prompt"), 1500);
     } catch {
-      alert("Could not copy automatically — please select and copy the text manually.");
+      alertDialog("Could not copy automatically — please select and copy the text manually.");
     }
   });
   el("#download-example-btn").addEventListener("click", downloadExample);

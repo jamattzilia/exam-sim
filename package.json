@@ -1,0 +1,13 @@
+{
+  "name": "exam-sim",
+  "private": true,
+  "type": "module",
+  "description": "CompTIA Security+ SY0-701 exam simulator (static web app)",
+  "scripts": {
+    "start": "node scripts/serve.mjs 8000",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

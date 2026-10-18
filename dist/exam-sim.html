@@ -438,6 +438,14 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 #exam-timer-wrap.low { color: var(--red); font-weight: 700; }
 .toast-region { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 90; width: min(420px, calc(100% - 32px)); }
 .toast { background: #1e293b; color: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); font-size: 0.9rem; }
+
+/* Set management */
+.set-actions { display: flex; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+.sets-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.modal-input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; margin: -6px 0 16px; font-size: 0.95rem; background: var(--panel); color: var(--text); }
+@media (max-width: 640px) {
+  .set-row { flex-wrap: wrap; gap: 4px; }
+}
 </style>
 </head>
 <body>
@@ -463,6 +471,10 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
             <h2 data-i18n="setup.sets.title">1. Question sets</h2>
             <p class="hint" data-i18n="setup.sets.hint">Enable one or more sets below to combine them into a single question pool. Upload new sets from the Instructions tab.</p>
             <div id="sets-list"></div>
+            <div class="sets-footer">
+              <span id="sets-dupes" class="hint"></span>
+              <button id="save-combined-btn" class="btn-link" data-i18n="set.saveCombined">Save enabled sets as one new set</button>
+            </div>
           </div>
 
           <div class="panel">
@@ -2190,6 +2202,10 @@ function addUploadedSet(set) {
   return write(SETS_KEY, [...loadUploadedSets(), set]);
 }
 
+function renameUploadedSet(setId, setName) {
+  return write(SETS_KEY, loadUploadedSets().map((s) => (s.id === setId ? { ...s, setName } : s)));
+}
+
 function removeUploadedSet(setId) {
   write(SETS_KEY, loadUploadedSets().filter((s) => s.id !== setId));
 }
@@ -2254,7 +2270,7 @@ function clearProgress() {
     // storage unavailable; nothing to clear
   }
 }
-return { SESSION_KEY, loadUploadedSets, addUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, loadLanguage, saveLanguage, loadHistory, saveHistory, loadStats, saveStats, clearProgress };
+return { SESSION_KEY, loadUploadedSets, addUploadedSet, renameUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, loadLanguage, saveLanguage, loadHistory, saveHistory, loadStats, saveStats, clearProgress };
 })();
 
 // js/progress.js
@@ -2606,6 +2622,14 @@ const STRINGS = {
     "set.remove": "Remove",
     "set.removeConfirm": 'Remove set "{name}"?',
     "set.count": "{n} q",
+    "set.rename": "Rename",
+    "set.renamePrompt": "New name for this set:",
+    "set.export": "Export",
+    "set.saveCombined": "Save enabled sets as one new set",
+    "set.saveCombinedPrompt": "Name for the combined set ({n} questions):",
+    "set.combinedName": "Combined set",
+    "set.needTwo": "Enable at least two sets to combine them.",
+    "set.duplicates": "{n} duplicate question(s) across the enabled sets are skipped.",
     "domain.partial": "(partial)",
     "range.placeholder": "e.g. {from}-{to}",
     "range.apply": "Apply range",
@@ -2788,6 +2812,14 @@ const STRINGS = {
     "set.remove": "Удалить",
     "set.removeConfirm": "Удалить набор «{name}»?",
     "set.count": "{n} вопр.",
+    "set.rename": "Переименовать",
+    "set.renamePrompt": "Новое название набора:",
+    "set.export": "Экспорт",
+    "set.saveCombined": "Сохранить включённые наборы как один новый",
+    "set.saveCombinedPrompt": "Название объединённого набора (вопросов: {n}):",
+    "set.combinedName": "Объединённый набор",
+    "set.needTwo": "Чтобы объединить наборы, включите хотя бы два.",
+    "set.duplicates": "Повторяющихся вопросов в включённых наборах: {n} — они пропускаются.",
     "domain.partial": "(частично)",
     "range.placeholder": "напр. {from}-{to}",
     "range.apply": "Применить",
@@ -2974,7 +3006,9 @@ const __mod_js_dialog_js = (() => {
 
 const open = new Set();
 
-function showDialog({ message, confirmText = t("dialog.ok"), cancelText = null, danger = false }) {
+// With `input`, the dialog has a text field and resolves to its value (or null if
+// cancelled); otherwise it resolves to true/false.
+function showDialog({ message, confirmText = t("dialog.ok"), cancelText = null, danger = false, input = null }) {
   return new Promise((resolve) => {
     const previousFocus = document.activeElement;
     const backdrop = document.createElement("div");
@@ -2989,6 +3023,18 @@ function showDialog({ message, confirmText = t("dialog.ok"), cancelText = null, 
     text.textContent = message;
     box.appendChild(text);
 
+    let field = null;
+    if (input) {
+      field = document.createElement("input");
+      field.type = "text";
+      field.className = "modal-input";
+      field.value = input.value || "";
+      field.setAttribute("aria-label", message);
+      box.appendChild(field);
+    }
+    const confirmValue = () => (field ? field.value : true);
+    const cancelValue = field ? null : false;
+
     const actions = document.createElement("div");
     actions.className = "modal-actions";
     const finish = (value) => {
@@ -2999,7 +3045,7 @@ function showDialog({ message, confirmText = t("dialog.ok"), cancelText = null, 
       if (previousFocus && document.contains(previousFocus)) previousFocus.focus();
       resolve(value);
     };
-    const entry = { finish };
+    const entry = { finish, cancel: () => finish(cancelValue) };
 
     let cancelBtn = null;
     if (cancelText) {
@@ -3008,7 +3054,7 @@ function showDialog({ message, confirmText = t("dialog.ok"), cancelText = null, 
       cancelBtn.className = "btn";
       cancelBtn.dataset.action = "cancel";
       cancelBtn.textContent = cancelText;
-      cancelBtn.addEventListener("click", () => finish(false));
+      cancelBtn.addEventListener("click", () => finish(cancelValue));
       actions.appendChild(cancelBtn);
     }
     const okBtn = document.createElement("button");
@@ -3016,15 +3062,16 @@ function showDialog({ message, confirmText = t("dialog.ok"), cancelText = null, 
     okBtn.className = `btn ${danger ? "danger" : "primary"}`;
     okBtn.dataset.action = "confirm";
     okBtn.textContent = confirmText;
-    okBtn.addEventListener("click", () => finish(true));
+    okBtn.addEventListener("click", () => finish(confirmValue()));
     actions.appendChild(okBtn);
     box.appendChild(actions);
 
     // Capture phase so exam keyboard shortcuts don't also fire while a dialog is open.
     const onKey = (e) => {
-      if (e.key === "Escape") finish(!cancelText);
+      if (e.key === "Escape") finish(cancelText ? cancelValue : confirmValue());
+      else if (e.key === "Enter" && field && document.activeElement === field) finish(confirmValue());
       else if (e.key === "Tab") {
-        const buttons = [cancelBtn, okBtn].filter(Boolean);
+        const buttons = [field, cancelBtn, okBtn].filter(Boolean);
         const i = buttons.indexOf(document.activeElement);
         buttons[(i + (e.shiftKey ? buttons.length - 1 : 1)) % buttons.length].focus();
       } else return;
@@ -3036,12 +3083,21 @@ function showDialog({ message, confirmText = t("dialog.ok"), cancelText = null, 
     open.add(entry);
     backdrop.appendChild(box);
     document.body.appendChild(backdrop);
-    (danger && cancelBtn ? cancelBtn : okBtn).focus();
+    if (field) {
+      field.focus();
+      field.select();
+    } else {
+      (danger && cancelBtn ? cancelBtn : okBtn).focus();
+    }
   });
 }
 
 function confirmDialog(message, { confirmText = t("dialog.ok"), cancelText = t("dialog.cancel"), danger = false } = {}) {
   return showDialog({ message, confirmText, cancelText, danger });
+}
+
+function promptDialog(message, { value = "", confirmText = t("dialog.ok"), cancelText = t("dialog.cancel") } = {}) {
+  return showDialog({ message, confirmText, cancelText, input: { value } });
 }
 
 function alertDialog(message) {
@@ -3068,9 +3124,9 @@ function showToast(message, { durationMs = 6000 } = {}) {
 // Closes every open dialog as if cancelled, e.g. when the exam timer runs out
 // while a "Submit anyway?" question is still on screen.
 function dismissAllDialogs() {
-  for (const entry of [...open]) entry.finish(false);
+  for (const entry of [...open]) entry.cancel();
 }
-return { showDialog, confirmDialog, alertDialog, showToast, dismissAllDialogs };
+return { showDialog, confirmDialog, promptDialog, alertDialog, showToast, dismissAllDialogs };
 })();
 
 // js/examEngine.js
@@ -3100,6 +3156,38 @@ function buildPool(selectedSets, selectedObjectiveIds) {
     }
   }
   return pool;
+}
+
+// Two questions are duplicates when type, stem and all answer texts match, so shared
+// generic stems ("Which of the following is BEST...") with different options survive.
+function fingerprint(q) {
+  const norm = (x) => String(x).toLowerCase().replace(/\s+/g, " ").trim();
+  const parts = [
+    ...(q.options || []),
+    ...(q.prompts || []),
+    ...(q.targets || []),
+    ...(q.items || []),
+    ...(q.zones || []).map((z) => z.label),
+    ...(q.rows || []).map((r) => r.label),
+  ];
+  return [q.type, norm(q.question), ...parts.map(norm).sort()].join("\u0000");
+}
+
+// Keeps the first copy of each question (sets earlier in the list win).
+function dedupeQuestions(pool) {
+  const seen = new Set();
+  const questions = pool.filter((q) => {
+    const key = fingerprint(q);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { questions, removed: pool.length - questions.length };
+}
+
+// A question as stored/exported: without the pool's _key/_setId and the session's display order.
+function stripRuntimeFields(q) {
+  return Object.fromEntries(Object.entries(q).filter(([k, v]) => !k.startsWith("_") && !k.startsWith("display") && v !== undefined));
 }
 
 function poolStatsByObjective(pool) {
@@ -3368,7 +3456,7 @@ function passingPercent() {
   const [lo, hi] = EXAM_INFO.scaledScoreRange;
   return Math.round(((EXAM_INFO.passingScaledScore - lo) / (hi - lo)) * 1000) / 10;
 }
-return { shuffle, buildPool, poolStatsByObjective, weightedDomainCounts, pickQuestionsWeighted, pickQuestions, prepareSessionQuestions, blankResponse, hasAnyAnswer, blankMatches, rowMatches, isCorrect, partialScore, scoreSession, passingPercent };
+return { shuffle, buildPool, dedupeQuestions, stripRuntimeFields, poolStatsByObjective, weightedDomainCounts, pickQuestionsWeighted, pickQuestions, prepareSessionQuestions, blankResponse, hasAnyAnswer, blankMatches, rowMatches, isCorrect, partialScore, scoreSession, passingPercent };
 })();
 
 // js/promptTemplate.js
@@ -3667,12 +3755,12 @@ const __mod_js_ui_js = (() => {
   const { DOMAINS, OBJECTIVE_INDEX, EXAM_INFO, allObjectiveIds } = __mod_js_data_objectives_js;
   const { SAMPLE_SET } = __mod_js_data_sampleQuestions_js;
   const { DOMAIN2_21_23_SET } = __mod_js_data_domain2Set_js;
-  const { loadUploadedSets, addUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, SESSION_KEY, loadLanguage, saveLanguage, loadHistory, saveHistory, loadStats, saveStats, clearProgress } = __mod_js_storage_js;
+  const { loadUploadedSets, addUploadedSet, removeUploadedSet, renameUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, SESSION_KEY, loadLanguage, saveLanguage, loadHistory, saveHistory, loadStats, saveStats, clearProgress } = __mod_js_storage_js;
   const { updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy } = __mod_js_progress_js;
   const { validateQuestionSet, BLANK_TOKEN } = __mod_js_validation_js;
-  const { confirmDialog, alertDialog, dismissAllDialogs, showToast } = __mod_js_dialog_js;
+  const { confirmDialog, alertDialog, promptDialog, dismissAllDialogs, showToast } = __mod_js_dialog_js;
   const { t, setLanguage, getLanguage, defaultLanguage, translatePage } = __mod_js_i18n_js;
-  const { buildPool, poolStatsByObjective, pickQuestions, pickQuestionsWeighted, prepareSessionQuestions, scoreSession, blankResponse, hasAnyAnswer, blankMatches, rowMatches, passingPercent, isCorrect, partialScore, shuffle } = __mod_js_examEngine_js;
+  const { buildPool, poolStatsByObjective, pickQuestions, pickQuestionsWeighted, prepareSessionQuestions, scoreSession, blankResponse, hasAnyAnswer, blankMatches, rowMatches, passingPercent, isCorrect, partialScore, shuffle, dedupeQuestions, stripRuntimeFields } = __mod_js_examEngine_js;
   const { UPLOAD_FORMAT_DOC, UPLOAD_FORMAT_EXAMPLE } = __mod_js_promptTemplate_js;
 // Sets bundled with the app. The first one is enabled by default; the others can be
 // switched on in the "Question sets" panel and are available on every device.
@@ -3729,6 +3817,11 @@ function enabledSets() {
   return allSets().filter((s) => state.enabledSetIds.has(s.id));
 }
 
+// The exam pool: enabled sets, filtered by objective, with cross-set duplicates removed.
+function examPool(objectiveIds = [...state.selectedObjectives]) {
+  return dedupeQuestions(buildPool(enabledSets(), objectiveIds));
+}
+
 function showPage(id) {
   elAll(".page").forEach((p) => p.classList.toggle("active", p.id === id));
   elAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.page === id));
@@ -3758,19 +3851,23 @@ function renderSetsPanel() {
         ce("span", { class: "badge" }, t("set.count", { n: count })),
         set.builtin ? ce("span", { class: "badge badge-muted" }, t("set.builtin")) : null,
       ]),
-      !set.builtin
-        ? ce("button", {
-            class: "btn-link danger",
-            onclick: async () => {
-              if (!(await confirmDialog(t("set.removeConfirm", { name: set.setName }), { confirmText: t("set.remove"), danger: true }))) return;
-              removeUploadedSet(set.id);
-              state.sets = loadUploadedSets();
-              state.enabledSetIds.delete(set.id);
-              renderSetsPanel();
-              refreshPoolCount();
-            },
-          }, t("set.remove"))
-        : null,
+      ce("div", { class: "set-actions" }, [
+        !set.builtin ? ce("button", { class: "btn-link", onclick: () => renameSet(set) }, t("set.rename")) : null,
+        ce("button", { class: "btn-link", onclick: () => exportSet(set) }, t("set.export")),
+        !set.builtin
+          ? ce("button", {
+              class: "btn-link danger",
+              onclick: async () => {
+                if (!(await confirmDialog(t("set.removeConfirm", { name: set.setName }), { confirmText: t("set.remove"), danger: true }))) return;
+                removeUploadedSet(set.id);
+                state.sets = loadUploadedSets();
+                state.enabledSetIds.delete(set.id);
+                renderSetsPanel();
+                refreshPoolCount();
+              },
+            }, t("set.remove"))
+          : null,
+      ]),
     ]);
     container.appendChild(row);
   }
@@ -3875,8 +3972,47 @@ function applyRange(domain, text) {
   matched.forEach((id) => state.selectedObjectives.add(id));
 }
 
+async function renameSet(set) {
+  const name = (await promptDialog(t("set.renamePrompt"), { value: set.setName }))?.trim();
+  if (!name || name === set.setName) return;
+  if (!renameUploadedSet(set.id, name)) return alertDialog(t("upload.storageFull"));
+  state.sets = loadUploadedSets();
+  renderSetsPanel();
+}
+
+const slug = (name) => name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "") || "question-set";
+
+// Same format as uploads, so an exported set can be edited and uploaded again.
+function setAsUploadFormat(setName, questions, description = "") {
+  return { setName, examVersion: "SY0-701", description, questions: questions.map(stripRuntimeFields) };
+}
+
+function exportSet(set) {
+  const data = setAsUploadFormat(set.setName, set.questions, set.description || "");
+  downloadFile(`${slug(set.setName)}.json`, JSON.stringify(data, null, 2), "application/json");
+}
+
+// Saves every enabled set (all objectives, duplicates removed) as one new uploaded set.
+async function saveCombinedSet() {
+  const sets = enabledSets();
+  if (sets.length < 2) return alertDialog(t("set.needTwo"));
+  const { questions } = dedupeQuestions(buildPool(sets, allObjectiveIds()));
+  const name = (await promptDialog(t("set.saveCombinedPrompt", { n: questions.length }), { value: t("set.combinedName") }))?.trim();
+  if (!name) return;
+  // Ids are only unique within a set, so prefix the ones that collide.
+  const ids = new Map();
+  for (const q of questions) ids.set(q.id, (ids.get(q.id) || 0) + 1);
+  const renamed = questions.map((q) => (ids.get(q.id) > 1 ? { ...q, id: `${q._setId}-${q.id}` } : q));
+  const newSet = { id: `up-${Date.now()}`, ...setAsUploadFormat(name, renamed, `Combined from: ${sets.map((s) => s.setName).join(", ")}`) };
+  if (!addUploadedSet(newSet)) return alertDialog(t("upload.storageFull"));
+  state.sets = loadUploadedSets();
+  state.enabledSetIds = new Set([newSet.id]);
+  renderSetsPanel();
+  refreshPoolCount();
+}
+
 function updateObjectiveCounts() {
-  const pool = buildPool(enabledSets(), allObjectiveIds());
+  const pool = examPool(allObjectiveIds()).questions;
   const stats = poolStatsByObjective(pool);
   elAll(".count-badge").forEach((badge) => {
     const objId = badge.dataset.obj;
@@ -3886,7 +4022,9 @@ function updateObjectiveCounts() {
 
 function refreshPoolCount() {
   updateObjectiveCounts();
-  const pool = buildPool(enabledSets(), [...state.selectedObjectives]);
+  const { questions: pool, removed } = examPool();
+  el("#sets-dupes").textContent = removed > 0 ? t("set.duplicates", { n: removed }) : "";
+  el("#save-combined-btn").hidden = enabledSets().length < 2;
   el("#pool-count").textContent = pool.length;
   const maxInput = el("#num-questions");
   maxInput.max = Math.max(pool.length, 1);
@@ -3939,7 +4077,7 @@ function applySavedSettings(saved) {
 
 function applyStandardPreset() {
   allObjectiveIds().forEach((id) => state.selectedObjectives.add(id));
-  const total = Math.min(EXAM_INFO.fullExamQuestions, buildPool(enabledSets(), allObjectiveIds()).length);
+  const total = Math.min(EXAM_INFO.fullExamQuestions, examPool(allObjectiveIds()).questions.length);
   el("#num-questions").value = total;
   el("#timer-minutes").value = EXAM_INFO.fullExamMinutes;
   el("#timer-toggle").checked = true;
@@ -3998,7 +4136,7 @@ function showUploadResult(result) {
       ce("button", {
         class: "btn primary small",
         onclick: () => {
-          const newSet = { id: `up-${Date.now()}`, setName: result.set.setName, questions: result.set.questions };
+          const newSet = { id: `up-${Date.now()}`, setName: result.set.setName, description: result.set.description, questions: result.set.questions };
           if (!addUploadedSet(newSet)) {
             alertDialog(t("upload.storageFull"));
             return;
@@ -4034,7 +4172,7 @@ function downloadExample() {
 
 async function startExam() {
   if (!(await confirmTakeOverOtherTab())) return;
-  const pool = buildPool(enabledSets(), [...state.selectedObjectives]);
+  const pool = examPool().questions;
   if (pool.length === 0) return;
 
   const numQuestions = Math.max(1, Math.min(Number(el("#num-questions").value) || pool.length, pool.length));
@@ -4649,8 +4787,8 @@ async function startPractice(questions, emptyMessage) {
 }
 
 function practiceObjective(objId) {
-  const fromEnabled = buildPool(enabledSets(), [objId]);
-  const pool = fromEnabled.length ? fromEnabled : buildPool(allSets(), [objId]);
+  const fromEnabled = examPool([objId]).questions;
+  const pool = fromEnabled.length ? fromEnabled : dedupeQuestions(buildPool(allSets(), [objId])).questions;
   startPractice(pickQuestions(pool, 10), t("progress.noObjective", { id: objId }));
 }
 
@@ -5028,6 +5166,7 @@ function wireNav() {
 
 function wireSetup() {
   el("#preset-standard-btn").addEventListener("click", applyStandardPreset);
+  el("#save-combined-btn").addEventListener("click", saveCombinedSet);
   el("#select-all-domains").addEventListener("click", () => {
     allObjectiveIds().forEach((id) => state.selectedObjectives.add(id));
     renderDomainFilters();

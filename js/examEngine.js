@@ -26,6 +26,38 @@ export function buildPool(selectedSets, selectedObjectiveIds) {
   return pool;
 }
 
+// Two questions are duplicates when type, stem and all answer texts match, so shared
+// generic stems ("Which of the following is BEST...") with different options survive.
+function fingerprint(q) {
+  const norm = (x) => String(x).toLowerCase().replace(/\s+/g, " ").trim();
+  const parts = [
+    ...(q.options || []),
+    ...(q.prompts || []),
+    ...(q.targets || []),
+    ...(q.items || []),
+    ...(q.zones || []).map((z) => z.label),
+    ...(q.rows || []).map((r) => r.label),
+  ];
+  return [q.type, norm(q.question), ...parts.map(norm).sort()].join("\u0000");
+}
+
+// Keeps the first copy of each question (sets earlier in the list win).
+export function dedupeQuestions(pool) {
+  const seen = new Set();
+  const questions = pool.filter((q) => {
+    const key = fingerprint(q);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { questions, removed: pool.length - questions.length };
+}
+
+// A question as stored/exported: without the pool's _key/_setId and the session's display order.
+export function stripRuntimeFields(q) {
+  return Object.fromEntries(Object.entries(q).filter(([k, v]) => !k.startsWith("_") && !k.startsWith("display") && v !== undefined));
+}
+
 export function poolStatsByObjective(pool) {
   const stats = {};
   for (const objId of Object.keys(OBJECTIVE_INDEX)) stats[objId] = 0;

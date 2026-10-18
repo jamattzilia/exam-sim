@@ -37,6 +37,10 @@ export function addUploadedSet(set) {
   return write(SETS_KEY, [...loadUploadedSets(), set]);
 }
 
+export function renameUploadedSet(setId, setName) {
+  return write(SETS_KEY, loadUploadedSets().map((s) => (s.id === setId ? { ...s, setName } : s)));
+}
+
 export function removeUploadedSet(setId) {
   write(SETS_KEY, loadUploadedSets().filter((s) => s.id !== setId));
 }

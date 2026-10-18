@@ -430,3 +430,11 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 #exam-timer-wrap.low { color: var(--red); font-weight: 700; }
 .toast-region { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 90; width: min(420px, calc(100% - 32px)); }
 .toast { background: #1e293b; color: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); font-size: 0.9rem; }
+
+/* Set management */
+.set-actions { display: flex; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+.sets-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.modal-input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; margin: -6px 0 16px; font-size: 0.95rem; background: var(--panel); color: var(--text); }
+@media (max-width: 640px) {
+  .set-row { flex-wrap: wrap; gap: 4px; }
+}

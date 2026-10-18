@@ -5,6 +5,7 @@ import {
   loadUploadedSets,
   addUploadedSet,
   removeUploadedSet,
+  renameUploadedSet,
   loadSettings,
   saveSettings,
   loadSession,
@@ -21,7 +22,7 @@ import {
 } from "./storage.js";
 import { updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy } from "./progress.js";
 import { validateQuestionSet, BLANK_TOKEN } from "./validation.js";
-import { confirmDialog, alertDialog, dismissAllDialogs, showToast } from "./dialog.js";
+import { confirmDialog, alertDialog, promptDialog, dismissAllDialogs, showToast } from "./dialog.js";
 import { t, setLanguage, getLanguage, defaultLanguage, translatePage } from "./i18n.js";
 import {
   buildPool,
@@ -38,6 +39,8 @@ import {
   isCorrect,
   partialScore,
   shuffle,
+  dedupeQuestions,
+  stripRuntimeFields,
 } from "./examEngine.js";
 import { UPLOAD_FORMAT_DOC, UPLOAD_FORMAT_EXAMPLE } from "./promptTemplate.js";
 
@@ -96,6 +99,11 @@ function enabledSets() {
   return allSets().filter((s) => state.enabledSetIds.has(s.id));
 }
 
+// The exam pool: enabled sets, filtered by objective, with cross-set duplicates removed.
+function examPool(objectiveIds = [...state.selectedObjectives]) {
+  return dedupeQuestions(buildPool(enabledSets(), objectiveIds));
+}
+
 function showPage(id) {
   elAll(".page").forEach((p) => p.classList.toggle("active", p.id === id));
   elAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.page === id));
@@ -125,19 +133,23 @@ function renderSetsPanel() {
         ce("span", { class: "badge" }, t("set.count", { n: count })),
         set.builtin ? ce("span", { class: "badge badge-muted" }, t("set.builtin")) : null,
       ]),
-      !set.builtin
-        ? ce("button", {
-            class: "btn-link danger",
-            onclick: async () => {
-              if (!(await confirmDialog(t("set.removeConfirm", { name: set.setName }), { confirmText: t("set.remove"), danger: true }))) return;
-              removeUploadedSet(set.id);
-              state.sets = loadUploadedSets();
-              state.enabledSetIds.delete(set.id);
-              renderSetsPanel();
-              refreshPoolCount();
-            },
-          }, t("set.remove"))
-        : null,
+      ce("div", { class: "set-actions" }, [
+        !set.builtin ? ce("button", { class: "btn-link", onclick: () => renameSet(set) }, t("set.rename")) : null,
+        ce("button", { class: "btn-link", onclick: () => exportSet(set) }, t("set.export")),
+        !set.builtin
+          ? ce("button", {
+              class: "btn-link danger",
+              onclick: async () => {
+                if (!(await confirmDialog(t("set.removeConfirm", { name: set.setName }), { confirmText: t("set.remove"), danger: true }))) return;
+                removeUploadedSet(set.id);
+                state.sets = loadUploadedSets();
+                state.enabledSetIds.delete(set.id);
+                renderSetsPanel();
+                refreshPoolCount();
+              },
+            }, t("set.remove"))
+          : null,
+      ]),
     ]);
     container.appendChild(row);
   }
@@ -242,8 +254,47 @@ function applyRange(domain, text) {
   matched.forEach((id) => state.selectedObjectives.add(id));
 }
 
+async function renameSet(set) {
+  const name = (await promptDialog(t("set.renamePrompt"), { value: set.setName }))?.trim();
+  if (!name || name === set.setName) return;
+  if (!renameUploadedSet(set.id, name)) return alertDialog(t("upload.storageFull"));
+  state.sets = loadUploadedSets();
+  renderSetsPanel();
+}
+
+const slug = (name) => name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "") || "question-set";
+
+// Same format as uploads, so an exported set can be edited and uploaded again.
+function setAsUploadFormat(setName, questions, description = "") {
+  return { setName, examVersion: "SY0-701", description, questions: questions.map(stripRuntimeFields) };
+}
+
+function exportSet(set) {
+  const data = setAsUploadFormat(set.setName, set.questions, set.description || "");
+  downloadFile(`${slug(set.setName)}.json`, JSON.stringify(data, null, 2), "application/json");
+}
+
+// Saves every enabled set (all objectives, duplicates removed) as one new uploaded set.
+async function saveCombinedSet() {
+  const sets = enabledSets();
+  if (sets.length < 2) return alertDialog(t("set.needTwo"));
+  const { questions } = dedupeQuestions(buildPool(sets, allObjectiveIds()));
+  const name = (await promptDialog(t("set.saveCombinedPrompt", { n: questions.length }), { value: t("set.combinedName") }))?.trim();
+  if (!name) return;
+  // Ids are only unique within a set, so prefix the ones that collide.
+  const ids = new Map();
+  for (const q of questions) ids.set(q.id, (ids.get(q.id) || 0) + 1);
+  const renamed = questions.map((q) => (ids.get(q.id) > 1 ? { ...q, id: `${q._setId}-${q.id}` } : q));
+  const newSet = { id: `up-${Date.now()}`, ...setAsUploadFormat(name, renamed, `Combined from: ${sets.map((s) => s.setName).join(", ")}`) };
+  if (!addUploadedSet(newSet)) return alertDialog(t("upload.storageFull"));
+  state.sets = loadUploadedSets();
+  state.enabledSetIds = new Set([newSet.id]);
+  renderSetsPanel();
+  refreshPoolCount();
+}
+
 function updateObjectiveCounts() {
-  const pool = buildPool(enabledSets(), allObjectiveIds());
+  const pool = examPool(allObjectiveIds()).questions;
   const stats = poolStatsByObjective(pool);
   elAll(".count-badge").forEach((badge) => {
     const objId = badge.dataset.obj;
@@ -253,7 +304,9 @@ function updateObjectiveCounts() {
 
 function refreshPoolCount() {
   updateObjectiveCounts();
-  const pool = buildPool(enabledSets(), [...state.selectedObjectives]);
+  const { questions: pool, removed } = examPool();
+  el("#sets-dupes").textContent = removed > 0 ? t("set.duplicates", { n: removed }) : "";
+  el("#save-combined-btn").hidden = enabledSets().length < 2;
   el("#pool-count").textContent = pool.length;
   const maxInput = el("#num-questions");
   maxInput.max = Math.max(pool.length, 1);
@@ -306,7 +359,7 @@ function applySavedSettings(saved) {
 
 function applyStandardPreset() {
   allObjectiveIds().forEach((id) => state.selectedObjectives.add(id));
-  const total = Math.min(EXAM_INFO.fullExamQuestions, buildPool(enabledSets(), allObjectiveIds()).length);
+  const total = Math.min(EXAM_INFO.fullExamQuestions, examPool(allObjectiveIds()).questions.length);
   el("#num-questions").value = total;
   el("#timer-minutes").value = EXAM_INFO.fullExamMinutes;
   el("#timer-toggle").checked = true;
@@ -365,7 +418,7 @@ function showUploadResult(result) {
       ce("button", {
         class: "btn primary small",
         onclick: () => {
-          const newSet = { id: `up-${Date.now()}`, setName: result.set.setName, questions: result.set.questions };
+          const newSet = { id: `up-${Date.now()}`, setName: result.set.setName, description: result.set.description, questions: result.set.questions };
           if (!addUploadedSet(newSet)) {
             alertDialog(t("upload.storageFull"));
             return;
@@ -401,7 +454,7 @@ function downloadExample() {
 
 async function startExam() {
   if (!(await confirmTakeOverOtherTab())) return;
-  const pool = buildPool(enabledSets(), [...state.selectedObjectives]);
+  const pool = examPool().questions;
   if (pool.length === 0) return;
 
   const numQuestions = Math.max(1, Math.min(Number(el("#num-questions").value) || pool.length, pool.length));
@@ -1016,8 +1069,8 @@ async function startPractice(questions, emptyMessage) {
 }
 
 function practiceObjective(objId) {
-  const fromEnabled = buildPool(enabledSets(), [objId]);
-  const pool = fromEnabled.length ? fromEnabled : buildPool(allSets(), [objId]);
+  const fromEnabled = examPool([objId]).questions;
+  const pool = fromEnabled.length ? fromEnabled : dedupeQuestions(buildPool(allSets(), [objId])).questions;
   startPractice(pickQuestions(pool, 10), t("progress.noObjective", { id: objId }));
 }
 
@@ -1395,6 +1448,7 @@ function wireNav() {
 
 function wireSetup() {
   el("#preset-standard-btn").addEventListener("click", applyStandardPreset);
+  el("#save-combined-btn").addEventListener("click", saveCombinedSet);
   el("#select-all-domains").addEventListener("click", () => {
     allObjectiveIds().forEach((id) => state.selectedObjectives.add(id));
     renderDomainFilters();

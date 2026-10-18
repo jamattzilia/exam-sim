@@ -5,7 +5,9 @@ import { t } from "./i18n.js";
 
 const open = new Set();
 
-export function showDialog({ message, confirmText = t("dialog.ok"), cancelText = null, danger = false }) {
+// With `input`, the dialog has a text field and resolves to its value (or null if
+// cancelled); otherwise it resolves to true/false.
+export function showDialog({ message, confirmText = t("dialog.ok"), cancelText = null, danger = false, input = null }) {
   return new Promise((resolve) => {
     const previousFocus = document.activeElement;
     const backdrop = document.createElement("div");
@@ -20,6 +22,18 @@ export function showDialog({ message, confirmText = t("dialog.ok"), cancelText =
     text.textContent = message;
     box.appendChild(text);
 
+    let field = null;
+    if (input) {
+      field = document.createElement("input");
+      field.type = "text";
+      field.className = "modal-input";
+      field.value = input.value || "";
+      field.setAttribute("aria-label", message);
+      box.appendChild(field);
+    }
+    const confirmValue = () => (field ? field.value : true);
+    const cancelValue = field ? null : false;
+
     const actions = document.createElement("div");
     actions.className = "modal-actions";
     const finish = (value) => {
@@ -30,7 +44,7 @@ export function showDialog({ message, confirmText = t("dialog.ok"), cancelText =
       if (previousFocus && document.contains(previousFocus)) previousFocus.focus();
       resolve(value);
     };
-    const entry = { finish };
+    const entry = { finish, cancel: () => finish(cancelValue) };
 
     let cancelBtn = null;
     if (cancelText) {
@@ -39,7 +53,7 @@ export function showDialog({ message, confirmText = t("dialog.ok"), cancelText =
       cancelBtn.className = "btn";
       cancelBtn.dataset.action = "cancel";
       cancelBtn.textContent = cancelText;
-      cancelBtn.addEventListener("click", () => finish(false));
+      cancelBtn.addEventListener("click", () => finish(cancelValue));
       actions.appendChild(cancelBtn);
     }
     const okBtn = document.createElement("button");
@@ -47,15 +61,16 @@ export function showDialog({ message, confirmText = t("dialog.ok"), cancelText =
     okBtn.className = `btn ${danger ? "danger" : "primary"}`;
     okBtn.dataset.action = "confirm";
     okBtn.textContent = confirmText;
-    okBtn.addEventListener("click", () => finish(true));
+    okBtn.addEventListener("click", () => finish(confirmValue()));
     actions.appendChild(okBtn);
     box.appendChild(actions);
 
     // Capture phase so exam keyboard shortcuts don't also fire while a dialog is open.
     const onKey = (e) => {
-      if (e.key === "Escape") finish(!cancelText);
+      if (e.key === "Escape") finish(cancelText ? cancelValue : confirmValue());
+      else if (e.key === "Enter" && field && document.activeElement === field) finish(confirmValue());
       else if (e.key === "Tab") {
-        const buttons = [cancelBtn, okBtn].filter(Boolean);
+        const buttons = [field, cancelBtn, okBtn].filter(Boolean);
         const i = buttons.indexOf(document.activeElement);
         buttons[(i + (e.shiftKey ? buttons.length - 1 : 1)) % buttons.length].focus();
       } else return;
@@ -67,12 +82,21 @@ export function showDialog({ message, confirmText = t("dialog.ok"), cancelText =
     open.add(entry);
     backdrop.appendChild(box);
     document.body.appendChild(backdrop);
-    (danger && cancelBtn ? cancelBtn : okBtn).focus();
+    if (field) {
+      field.focus();
+      field.select();
+    } else {
+      (danger && cancelBtn ? cancelBtn : okBtn).focus();
+    }
   });
 }
 
 export function confirmDialog(message, { confirmText = t("dialog.ok"), cancelText = t("dialog.cancel"), danger = false } = {}) {
   return showDialog({ message, confirmText, cancelText, danger });
+}
+
+export function promptDialog(message, { value = "", confirmText = t("dialog.ok"), cancelText = t("dialog.cancel") } = {}) {
+  return showDialog({ message, confirmText, cancelText, input: { value } });
 }
 
 export function alertDialog(message) {
@@ -99,5 +123,5 @@ export function showToast(message, { durationMs = 6000 } = {}) {
 // Closes every open dialog as if cancelled, e.g. when the exam timer runs out
 // while a "Submit anyway?" question is still on screen.
 export function dismissAllDialogs() {
-  for (const entry of [...open]) entry.finish(false);
+  for (const entry of [...open]) entry.cancel();
 }

@@ -385,3 +385,13 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 }
 
 .option-row.disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Practice mode */
+.feedback { margin-top: 14px; }
+.options-box.locked .option-row,
+.options-box.locked .order-item,
+.options-box.locked .hotspot-zone { cursor: default; }
+.palette-btn.checked-correct { background: #dcfce7; border-color: var(--green); }
+.palette-btn.checked-partial { background: #fef3c7; border-color: var(--amber); }
+.palette-btn.checked-incorrect { background: #fee2e2; border-color: var(--red); }
+.palette-btn.current { background: var(--accent); color: #fff; border-color: var(--accent); }

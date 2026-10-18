@@ -26,6 +26,8 @@ import {
   blankMatches,
   rowMatches,
   passingPercent,
+  isCorrect,
+  partialScore,
 } from "./examEngine.js";
 import { UPLOAD_FORMAT_DOC, UPLOAD_FORMAT_EXAMPLE } from "./promptTemplate.js";
 
@@ -263,6 +265,7 @@ function persistSettings() {
     shuffleOptions: el("#shuffle-options").checked,
     weighted: el("#weighted-toggle").checked,
     partialCredit: el("#partial-toggle").checked,
+    mode: el("#mode-select").value,
   });
 }
 
@@ -283,6 +286,7 @@ function applySavedSettings(saved) {
   if (typeof saved.shuffleOptions === "boolean") el("#shuffle-options").checked = saved.shuffleOptions;
   if (typeof saved.weighted === "boolean") el("#weighted-toggle").checked = saved.weighted;
   if (typeof saved.partialCredit === "boolean") el("#partial-toggle").checked = saved.partialCredit;
+  if (saved.mode === "exam" || saved.mode === "practice") el("#mode-select").value = saved.mode;
 }
 
 function applyStandardPreset() {
@@ -405,6 +409,8 @@ function beginSession(questions, endsAt) {
     index: 0,
     timerEnabled: endsAt != null,
     partialCredit: el("#partial-toggle").checked,
+    mode: el("#mode-select").value,
+    checked: new Set(),
     endsAt,
   };
   enterExam();
@@ -433,7 +439,11 @@ function endSession({ keepSaved = false } = {}) {
 function persistSession({ alive = true } = {}) {
   const s = state.session;
   if (!s) return;
-  saveSession({ ...s, marked: [...s.marked], ownerTab: TAB_ID, heartbeatAt: alive ? Date.now() : 0 });
+  saveSession({ ...s, marked: [...s.marked], checked: [...s.checked], ownerTab: TAB_ID, heartbeatAt: alive ? Date.now() : 0 });
+}
+
+function restoreSession(saved) {
+  return { ...saved, mode: saved.mode || "exam", marked: new Set(saved.marked || []), checked: new Set(saved.checked || []) };
 }
 
 function isRunningInAnotherTab(saved) {
@@ -478,7 +488,7 @@ async function resumeSavedSession() {
       { confirmText: "Continue here", cancelText: "Leave it there" }
     );
     if (!move) return false;
-    state.session = { ...saved, marked: new Set(saved.marked || []) };
+    state.session = restoreSession(saved);
     enterExam();
     return true;
   }
@@ -494,7 +504,7 @@ async function resumeSavedSession() {
     clearSession();
     return false;
   }
-  state.session = { ...saved, marked: new Set(saved.marked || []) };
+  state.session = restoreSession(saved);
   enterExam();
   return true;
 }
@@ -554,12 +564,55 @@ function renderExam() {
   const renderer = QUESTION_RENDERERS[q.type] || QUESTION_RENDERERS.choice;
   renderer(q, s, optionsBox);
 
+  // Practice mode: once checked, the answer is locked and feedback shown underneath.
+  const practice = s.mode === "practice";
+  const checked = practice && s.checked.has(q._key);
+  if (checked) {
+    optionsBox.classList.add("locked");
+    optionsBox.querySelectorAll("input, select, button").forEach((c) => (c.disabled = true));
+    optionsBox.appendChild(renderFeedback(q, s));
+  } else {
+    optionsBox.classList.remove("locked");
+  }
+  el("#check-btn").style.display = practice && !checked ? "inline-block" : "none";
+
   el("#mark-review-btn").classList.toggle("active", s.marked.has(q._key));
   el("#prev-btn").disabled = s.index === 0;
   el("#next-btn").style.display = s.index === s.questions.length - 1 ? "none" : "inline-block";
   el("#finish-btn").style.display = s.index === s.questions.length - 1 ? "inline-block" : "none";
 
   sessionChanged();
+}
+
+function questionResult(q, response, partialCredit) {
+  const given = hasAnyAnswer(q, response) ? response : [];
+  const correct = isCorrect(q, given);
+  const points = partialCredit ? partialScore(q, given) : correct ? 1 : 0;
+  const status = correct ? "correct" : points > 0 ? "partial" : "incorrect";
+  return { given, correct, points, status };
+}
+
+function statusLabel({ status, points }) {
+  if (status === "correct") return "✓ Correct";
+  if (status === "partial") return `◐ Partial credit (${Math.round(points * 100)}%)`;
+  return "✗ Incorrect";
+}
+
+function renderFeedback(q, s) {
+  const result = questionResult(q, s.answers[q._key], s.partialCredit !== false);
+  const renderBody = REVIEW_BODY_RENDERERS[q.type] || REVIEW_BODY_RENDERERS.choice;
+  return ce("div", { class: `review-item feedback ${result.status}` }, [
+    ce("div", { class: "review-head" }, [ce("strong", {}, statusLabel(result))]),
+    renderBody(q, result.given),
+    q.explanation ? ce("div", { class: "review-explanation" }, q.explanation) : null,
+  ]);
+}
+
+function checkCurrentAnswer() {
+  const s = state.session;
+  if (!s || s.mode !== "practice") return;
+  s.checked.add(s.questions[s.index]._key);
+  renderExam();
 }
 
 function sessionChanged() {
@@ -782,7 +835,7 @@ const QUESTION_RENDERERS = {
 function enableDragReorder(list, onReorder) {
   list.addEventListener("pointerdown", (e) => {
     const item = e.target.closest(".order-item");
-    if (!item || e.button !== 0 || e.target.closest("button")) return;
+    if (!item || e.button !== 0 || e.target.closest("button") || list.closest(".locked")) return;
     if (e.pointerType !== "mouse" && !e.target.closest(".order-handle")) return;
     e.preventDefault();
 
@@ -822,8 +875,9 @@ function renderPalette() {
   s.questions.forEach((q, i) => {
     const answered = isAnswered(s, q);
     const marked = s.marked.has(q._key);
+    const checkedStatus = s.checked.has(q._key) ? `checked-${questionResult(q, s.answers[q._key], s.partialCredit !== false).status}` : "";
     const btn = ce("button", {
-      class: `palette-btn ${answered ? "answered" : ""} ${marked ? "marked" : ""} ${i === s.index ? "current" : ""}`,
+      class: `palette-btn ${answered ? "answered" : ""} ${marked ? "marked" : ""} ${checkedStatus} ${i === s.index ? "current" : ""}`,
       onclick: () => {
         s.index = i;
         renderExam();
@@ -1118,13 +1172,12 @@ function renderReviewDetails(result, onlyIncorrect) {
     .filter((d) => !onlyIncorrect || !d.correct)
     .forEach((d) => {
       const q = d.question;
-      const partial = !d.correct && d.points > 0;
-      const status = d.correct ? "correct" : partial ? "partial" : "incorrect";
+      const status = d.correct ? "correct" : d.points > 0 ? "partial" : "incorrect";
       const item = ce("div", { class: `review-item ${status}` });
       item.appendChild(ce("div", { class: "review-head" }, [
         ce("span", { class: "obj-code" }, q.domain),
         ce("span", {}, PBQ_TYPE_LABELS[q.type] || ""),
-        ce("span", {}, d.correct ? "✓ Correct" : partial ? `◐ Partial credit (${Math.round(d.points * 100)}%)` : "✗ Incorrect"),
+        ce("span", {}, statusLabel({ status, points: d.points })),
       ]));
       item.appendChild(ce("div", { class: "review-question" }, q.question));
       const renderBody = REVIEW_BODY_RENDERERS[q.type] || REVIEW_BODY_RENDERERS.choice;
@@ -1184,7 +1237,7 @@ function wireSetup() {
   });
   el("#num-questions").addEventListener("input", refreshPoolCount);
   el("#start-exam-btn").addEventListener("click", startExam);
-  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle", "#partial-toggle"].forEach((sel) => {
+  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle", "#partial-toggle", "#mode-select"].forEach((sel) => {
     el(sel).addEventListener("change", persistSettings);
   });
 
@@ -1213,6 +1266,7 @@ function wireExam() {
     renderExam();
   });
   el("#finish-btn").addEventListener("click", finishExam);
+  el("#check-btn").addEventListener("click", checkCurrentAnswer);
   el("#quit-exam-btn").addEventListener("click", async () => {
     if (await confirmQuitExam()) showPage("page-setup");
   });

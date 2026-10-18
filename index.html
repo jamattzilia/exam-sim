@@ -45,6 +45,13 @@
           <div class="panel sticky">
             <h2>3. Exam options</h2>
             <div class="field-row">
+              <label for="mode-select">Mode</label>
+              <select id="mode-select">
+                <option value="exam">Exam — results at the end</option>
+                <option value="practice">Practice — check each answer</option>
+              </select>
+            </div>
+            <div class="field-row">
               <label for="num-questions">Number of questions</label>
               <input type="number" id="num-questions" min="1" value="20" />
             </div>
@@ -103,6 +110,7 @@
       <div class="exam-nav">
         <button id="prev-btn" class="btn">◀ Previous</button>
         <button id="mark-review-btn" class="btn">Mark for review</button>
+        <button id="check-btn" class="btn primary" style="display:none">Check answer</button>
         <button id="next-btn" class="btn">Next ▶</button>
         <button id="finish-btn" class="btn primary" style="display:none">Submit exam</button>
       </div>

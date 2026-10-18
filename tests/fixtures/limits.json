@@ -1,0 +1,7 @@
+{
+  "setName": "Limits",
+  "questions": [
+    {"id":"m2","domain":"4.6","type":"multiple","question":"Which TWO are authentication factors? (Select TWO)","options":["Password","Job title","Fingerprint","Department"],"answer":[0,2]},
+    {"id":"reuse","domain":"1.1","type":"matching","question":"Classify each control.","prompts":["Fence","Guard","Policy"],"targets":["Physical","Managerial"],"answer":[0,0,1]}
+  ]
+}

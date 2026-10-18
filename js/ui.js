@@ -356,7 +356,6 @@ function showUploadResult(result) {
           renderSetsPanel();
           refreshPoolCount();
           box.style.display = "none";
-          el("#file-input").value = "";
         },
       }, `Import ${parsedCount} question(s) into a new set`)
     );
@@ -580,39 +579,58 @@ function isAnswered(s, q) {
 
 const QUESTION_RENDERERS = {
   choice(q, s, box) {
-    const inputType = q.type === "multiple" ? "checkbox" : "radio";
-    if (q.type === "multiple") box.appendChild(ce("p", { class: "hint" }, `Select ${q.answer.length}.`));
+    const multiple = q.type === "multiple";
+    const limit = q.answer.length;
+    if (multiple) box.appendChild(ce("p", { class: "hint" }, `Select ${limit}.`));
     const selected = new Set(s.answers[q._key] || []);
+    const inputs = [];
+    // Like the real exam, a "Select N" question accepts at most N choices.
+    const syncLimit = () => {
+      if (!multiple) return;
+      const full = inputs.filter((i) => i.checked).length >= limit;
+      for (const input of inputs) {
+        input.disabled = full && !input.checked;
+        input.closest(".option-row").classList.toggle("disabled", input.disabled);
+      }
+    };
     q.displayOptions.forEach((origIdx) => {
-      const row = ce("label", { class: "option-row" }, [
-        ce("input", {
-          type: inputType,
-          name: "option",
-          ...(selected.has(origIdx) ? { checked: "checked" } : {}),
-          onchange: (e) => {
-            let sel = new Set(s.answers[q._key] || []);
-            if (inputType === "radio") sel = new Set([origIdx]);
-            else if (e.target.checked) sel.add(origIdx);
-            else sel.delete(origIdx);
-            setAnswer(s, q, [...sel]);
-          },
-        }),
-        ce("span", {}, q.options[origIdx]),
-      ]);
-      box.appendChild(row);
+      const input = ce("input", {
+        type: multiple ? "checkbox" : "radio",
+        name: "option",
+        ...(selected.has(origIdx) ? { checked: "checked" } : {}),
+        onchange: (e) => {
+          let sel = new Set(s.answers[q._key] || []);
+          if (!multiple) sel = new Set([origIdx]);
+          else if (e.target.checked) sel.add(origIdx);
+          else sel.delete(origIdx);
+          setAnswer(s, q, [...sel]);
+          syncLimit();
+        },
+      });
+      inputs.push(input);
+      box.appendChild(ce("label", { class: "option-row" }, [input, ce("span", {}, q.options[origIdx])]));
     });
+    syncLimit();
   },
 
   matching(q, s, box) {
-    box.appendChild(ce("p", { class: "hint" }, "Assign each item on the left to the correct match on the right."));
+    // When every prompt has a different correct match, each option is used once (like
+    // dragging a card onto one slot): picking an option already used elsewhere moves it.
+    const oneToOne = new Set(q.answer).size === q.answer.length;
+    box.appendChild(
+      ce("p", { class: "hint" }, `Assign each item on the left to the correct match on the right. ${oneToOne ? "Each option can be used once." : "Options can be used more than once."}`)
+    );
     const response = s.answers[q._key] || blankResponse(q);
     q.prompts.forEach((promptText, promptIdx) => {
       const select = ce("select", {
         onchange: (e) => {
           const val = e.target.value === "" ? null : Number(e.target.value);
           const next = [...(s.answers[q._key] || blankResponse(q))];
+          const movedFrom = oneToOne && val !== null ? next.indexOf(val) : -1;
+          if (movedFrom !== -1 && movedFrom !== promptIdx) next[movedFrom] = null;
           next[promptIdx] = val;
           setAnswer(s, q, next);
+          if (movedFrom !== -1 && movedFrom !== promptIdx) renderExam();
         },
       }, [ce("option", { value: "" }, "-- Select --")]);
       q.displayTargets.forEach((origIdx) => {
@@ -1000,8 +1018,13 @@ function exportResultsCSV(result) {
       q.explanation || "",
     ];
   });
-  const summaryLine = ["Score", `${number(result.points)}/${result.total} (${number(result.percent)}%)`, ...Array(header.length - 2).fill("")];
-  const csv = [header, summaryLine, ...rows].map((r) => r.map((v) => csvEscape(v, delimiter)).join(delimiter)).join("\r\n");
+  // Summary goes below the table after a blank row, so Excel's sort/filter range
+  // (which stops at the first empty row) covers only the questions.
+  const summary = [
+    ["Score", `${number(result.points)}/${result.total} (${number(result.percent)}%)`],
+    ["Estimated scaled score", `${result.scaled}/${EXAM_INFO.scaledScoreRange[1]}`],
+  ];
+  const csv = [header, ...rows, [], ...summary].map((r) => r.map((v) => csvEscape(v, delimiter)).join(delimiter)).join("\r\n");
   // BOM so Excel detects UTF-8 (otherwise "→" and non-Latin text are garbled).
   downloadFile(`sy0-701-results-${timestampForFilename()}.csv`, "\uFEFF" + csv, "text/csv;charset=utf-8");
 }
@@ -1167,6 +1190,8 @@ function wireSetup() {
 
   el("#file-input").addEventListener("change", (e) => {
     const file = e.target.files[0];
+    // Reset so picking the same file again (e.g. after fixing it) fires "change" again.
+    e.target.value = "";
     if (file) handleFileUpload(file);
   });
 }

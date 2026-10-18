@@ -22,7 +22,7 @@ for (const [locale, delimiter, decimal] of [["ru-RU", ";", "0,75"], ["en-US", ",
   test.describe(`CSV in ${locale}`, () => {
     test.use({ locale });
 
-    test(`uses "${delimiter}" and ${decimal} and has a BOM`, async ({ page }) => {
+    test(`uses "${delimiter}" and ${decimal}, has a BOM, and keeps the summary below the table`, async ({ page }) => {
       await finishWithPartialSimulation(page);
       const buf = await download(page, "#export-csv-btn", "results.csv");
       expect([...buf.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
@@ -30,6 +30,10 @@ for (const [locale, delimiter, decimal] of [["ru-RU", ";", "0,75"], ["en-US", ",
       expect(lines[0].startsWith(["id", "domain", "objective"].join(delimiter))).toBe(true);
       const sim = lines.find((l) => l.includes("Configure the following inbound"));
       expect(sim).toContain(`${delimiter}partial${delimiter}${decimal}${delimiter}`);
+      const blank = lines.indexOf("");
+      expect(blank).toBeGreaterThan(1);
+      expect(lines.slice(1, blank).every((l) => !l.startsWith("Score"))).toBe(true);
+      expect(lines[blank + 1].startsWith("Score")).toBe(true);
     });
   });
 }

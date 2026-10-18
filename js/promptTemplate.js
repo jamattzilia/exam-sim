@@ -59,8 +59,9 @@ TYPE 3 — "matching"  (PBQ: drag/select each item to its correct match)
   "explanation": "..."
 }
 - prompts (array of strings, REQUIRED, 2+): left-hand items.
-- targets (array of strings, REQUIRED): right-hand choices. May include extra
-  distractor targets beyond prompts.length.
+- targets (array of strings, REQUIRED, 2+): right-hand choices. Either one per prompt
+  plus optional distractors (each target used once), or fewer categories than prompts
+  when items are classified (targets reused, e.g. 6 controls into 4 control types).
 - answer (array of integers, REQUIRED, same length as "prompts"): for each prompt
   (by position), the zero-based index into "targets" that is correct.
 
@@ -111,8 +112,9 @@ TYPE 6 — "hotspot"  (PBQ: click the correct zone(s) of an abstract diagram)
   "explanation": "..."
 }
 - zones (array, REQUIRED, 2+): labeled rectangles on an abstract canvas. x/y/w/h are
-  PERCENTAGES (0-100) of the canvas width/height (x,y = top-left corner). No image
-  file is needed — the app renders these as labeled clickable boxes.
+  PERCENTAGES (0-100) of the canvas width/height (x,y = top-left corner). Each zone
+  must fit inside the canvas (x + w <= 100, y + h <= 100) and zones must not overlap.
+  No image file is needed — the app renders these as labeled clickable boxes.
 - answer (array of strings, REQUIRED): the zone id(s) that are correct (supports
   single or multi-zone answers).
 
@@ -175,13 +177,14 @@ Requirements:
 Field reference for each type
 - single / multiple: "options" (array of 4 plausible choices) + "answer" (zero-based
   index array into options; one index for single, 2+ for multiple).
-- matching: "prompts" (2+ strings) + "targets" (strings, may include 1-2 distractors
-  beyond prompts.length) + "answer" (one target-index per prompt, same order as prompts).
+- matching: "prompts" (2+ strings) + "targets" (2+ strings: one per prompt plus 1-2
+  distractors, or fewer shared categories that prompts are classified into) + "answer"
+  (one target-index per prompt, same order as prompts).
 - ordering: "items" (3-6 strings) listed IN THE CORRECT ORDER — no separate answer field.
 - fill_blank: "question" must contain one "____" (4 underscores) per blank, plus
   "blanks" (array of { "accepted": [acceptable strings/synonyms] }, one per "____").
 - hotspot: "zones" (2-5 objects with unique "id", "label", and x/y/w/h as 0-100
-  percentages of an abstract canvas, non-overlapping) + "answer" (array of the
+  percentages of an abstract canvas, non-overlapping, x + w <= 100 and y + h <= 100) + "answer" (array of the
   correct zone id(s)).
 - simulation: "rows" (2-6 objects with "label" and "fieldType": "select" needs
   "options" + "answer" from those options; "checkbox" needs "answer" true/false;

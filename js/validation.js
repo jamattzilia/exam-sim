@@ -42,8 +42,9 @@ const TYPE_VALIDATORS = {
     if (!Array.isArray(q.prompts) || q.prompts.length < 2) {
       return { ok: false, error: `${where}: "prompts" must be an array of at least 2 strings.` };
     }
-    if (!Array.isArray(q.targets) || q.targets.length < q.prompts.length) {
-      return { ok: false, error: `${where}: "targets" must have at least as many entries as "prompts".` };
+    // Fewer targets than prompts is fine: classifying items into categories reuses targets.
+    if (!Array.isArray(q.targets) || q.targets.length < 2) {
+      return { ok: false, error: `${where}: "targets" must be an array of at least 2 strings.` };
     }
     const prompts = q.prompts.map((p) => String(p));
     const targets = q.targets.map((t) => String(t));
@@ -104,8 +105,17 @@ const TYPE_VALIDATORS = {
           error: `${where}: each zone needs a unique "id", a "label", and x/y/w/h numbers between 0 and 100 (percent of the canvas).`,
         };
       }
+      const [x, y, w, h] = nums;
+      if (w === 0 || h === 0 || x + w > 100 || y + h > 100) {
+        return { ok: false, error: `${where}: zone "${id}" must have a size and fit inside the canvas (x + w ≤ 100, y + h ≤ 100).` };
+      }
+      // A zone covered by another can't be clicked, which would make the question unanswerable.
+      const overlap = zones.find((z) => x < z.x + z.w && z.x < x + w && y < z.y + z.h && z.y < y + h);
+      if (overlap) {
+        return { ok: false, error: `${where}: zones "${overlap.id}" and "${id}" overlap; hotspot zones must not overlap.` };
+      }
       zoneIds.add(id);
-      zones.push({ id, label, x: nums[0], y: nums[1], w: nums[2], h: nums[3] });
+      zones.push({ id, label, x, y, w, h });
     }
     if (!Array.isArray(q.answer) || q.answer.length === 0 || q.answer.some((a) => !zoneIds.has(a))) {
       return { ok: false, error: `${where}: "answer" must be a non-empty array of zone ids that exist in "zones".` };

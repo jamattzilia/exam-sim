@@ -4,6 +4,6 @@
     {"domain":"1.2","type":"fill_blank","question":"No blanks here","blanks":[{"accepted":["x"]}]},
     {"domain":"3.2","type":"hotspot","question":"Duplicate zone ids","zones":[{"id":"a","label":"A","x":10,"y":10,"w":10,"h":10},{"id":"a","label":"B","x":50,"y":10,"w":10,"h":10}],"answer":["a"]},
     {"domain":"4.8","type":"ordering","question":"Too few items","items":["only","two"]},
-    {"domain":"1.1","type":"matching","question":"Too few targets","prompts":["p1","p2"],"targets":["t1"],"answer":[0,0]}
+    {"domain":"1.1","type":"matching","question":"Answer out of range","prompts":["p1","p2"],"targets":["t1","t2"],"answer":[0,5]}
   ]
 }

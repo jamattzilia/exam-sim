@@ -1,0 +1,7 @@
+{
+  "setName": "Bad hotspots",
+  "questions": [
+    {"domain":"3.2","type":"hotspot","question":"Overlapping","zones":[{"id":"a","label":"A","x":10,"y":10,"w":40,"h":40},{"id":"b","label":"B","x":30,"y":30,"w":40,"h":40}],"answer":["a"]},
+    {"domain":"3.2","type":"hotspot","question":"Out of bounds","zones":[{"id":"a","label":"A","x":80,"y":10,"w":30,"h":20},{"id":"b","label":"B","x":10,"y":10,"w":20,"h":20}],"answer":["a"]}
+  ]
+}

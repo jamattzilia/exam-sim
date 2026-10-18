@@ -22,7 +22,19 @@ test("invalid PBQs are rejected with specific messages", async ({ page }) => {
   await expect(result).toContainText('exactly 1 "____" placeholder');
   await expect(result).toContainText("unique \"id\"");
   await expect(result).toContainText("at least 3 strings");
-  await expect(result).toContainText("at least as many entries");
+  await expect(result).toContainText("within range of \"targets\"");
+});
+
+test("overlapping or out-of-bounds hotspot zones are rejected", async ({ page }) => {
+  await uploadSet(page, fixture("bad-hotspot.json"));
+  const result = page.locator("#upload-result");
+  await expect(result).toContainText('zones "a" and "b" overlap');
+  await expect(result).toContainText("fit inside the canvas");
+});
+
+test("the file input resets so the same file can be picked again", async ({ page }) => {
+  await uploadSet(page, fixture("bad-hotspot.json"));
+  expect(await page.inputValue("#file-input")).toBe("");
 });
 
 test("fill_blank accepts runs of 5 or 6 underscores", async ({ page }) => {

@@ -383,3 +383,5 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
   .hotspot-zone { font-size: 0.72rem; padding: 3px; }
   .objective-list, .range-row { margin-left: 0; }
 }
+
+.option-row.disabled { opacity: 0.5; cursor: not-allowed; }

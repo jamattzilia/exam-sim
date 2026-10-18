@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { fileURLToPath } from "node:url";
 import {
   openApp,
   onlyObjectives,
@@ -7,7 +8,10 @@ import {
   goToQuestionOfType,
   setFirewallRows,
   ORDERING_STEPS,
+  importUploaded,
 } from "./helpers.js";
+
+const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 
 const orderTexts = (page) => page.locator(".order-item .order-text").allTextContents();
 
@@ -88,5 +92,42 @@ test.describe("PBQ partial credit", () => {
     await answerThreeOfFourRows(page);
     await expect(page.locator("#result-score")).toHaveText(/^0 \/ 4/);
     await expect(page.locator(".review-item", { hasText: "Configure the following inbound" })).toContainText("✗ Incorrect");
+  });
+});
+
+test.describe("answer limits", () => {
+  test.beforeEach(async ({ page }) => openApp(page));
+
+  test("one-to-one matching moves an option instead of reusing it", async ({ page }) => {
+    await onlyObjectives(page, [[0, "1.1"]]);
+    await startExam(page, { n: 3 });
+    await goToQuestionOfType(page, "Matching");
+    await expect(page.locator("#options-box")).toContainText("Each option can be used once.");
+    const selects = page.locator(".matching-row select");
+    await selects.nth(0).selectOption({ label: "Physical" });
+    await selects.nth(1).selectOption({ label: "Physical" });
+    await expect(selects.nth(0)).toHaveValue("");
+    await expect(selects.nth(1).locator("option:checked")).toHaveText("Physical");
+  });
+
+  test("matching whose answer repeats a target allows reuse; Select 2 allows only 2", async ({ page }) => {
+    await importUploaded(page, fixture("limits.json"));
+    await page.locator(".set-row", { hasText: "Built-in Sample Set" }).locator("input").uncheck();
+    await startExam(page, { n: 2 });
+
+    await goToQuestionOfType(page, "Matching");
+    await expect(page.locator("#options-box")).toContainText("Options can be used more than once.");
+    const selects = page.locator(".matching-row select");
+    await selects.nth(0).selectOption({ label: "Physical" });
+    await selects.nth(1).selectOption({ label: "Physical" });
+    await expect(selects.nth(0).locator("option:checked")).toHaveText("Physical");
+
+    await goToQuestionOfType(page, "select all that apply");
+    const boxes = page.locator(".option-row input");
+    await boxes.nth(0).check();
+    await boxes.nth(1).check();
+    await expect(page.locator(".option-row input:disabled")).toHaveCount(2);
+    await boxes.nth(1).uncheck();
+    await expect(page.locator(".option-row input:disabled")).toHaveCount(0);
   });
 });

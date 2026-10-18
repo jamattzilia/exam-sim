@@ -12,7 +12,10 @@ modules, served as static files.
   a domain (e.g. type `1.1-1.3` to select those objectives and exclude `1.4`).
 - Take an exam on a single domain, several domains, or a custom cross-domain
   mix of objectives.
-- Combine multiple question sets (the built-in sample set plus any number of
+- Two built-in question sets: a small sample set across all five domains, and
+  an exam-style set of 49 scenario questions (incl. PBQs) for objectives
+  2.1–2.3 (`js/data/domain2Set.js`), switchable in the "Question sets" panel.
+- Combine multiple question sets (the built-in sets plus any number of
   uploaded sets) into one pool for a single exam session.
 - Upload your own LLM-generated question sets as JSON, with schema
   validation and an in-app prompt template for generating compatible files

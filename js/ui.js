@@ -1,5 +1,6 @@
 import { DOMAINS, OBJECTIVE_INDEX, EXAM_INFO, allObjectiveIds } from "./data/objectives.js";
 import { SAMPLE_SET } from "./data/sampleQuestions.js";
+import { DOMAIN2_21_23_SET } from "./data/domain2Set.js";
 import { loadUploadedSets, addUploadedSet, removeUploadedSet, loadSettings, saveSettings } from "./storage.js";
 import { validateQuestionSet, BLANK_TOKEN } from "./validation.js";
 import {
@@ -14,7 +15,12 @@ import {
 } from "./examEngine.js";
 import { UPLOAD_FORMAT_DOC, UPLOAD_FORMAT_EXAMPLE } from "./promptTemplate.js";
 
-const BUILTIN_SET = { id: "builtin", setName: SAMPLE_SET.setName, questions: SAMPLE_SET.questions, builtin: true };
+// Sets bundled with the app. The first one is enabled by default; the others can be
+// switched on in the "Question sets" panel and are available on every device.
+const BUILTIN_SETS = [
+  { id: "builtin", setName: SAMPLE_SET.setName, questions: SAMPLE_SET.questions, builtin: true },
+  { id: "builtin-d2-2.1-2.3", setName: DOMAIN2_21_23_SET.setName, questions: DOMAIN2_21_23_SET.questions, builtin: true },
+];
 
 const state = {
   sets: [], // { id, setName, questions, builtin? }
@@ -52,7 +58,7 @@ function ce(tag, props = {}, children = []) {
 }
 
 function allSets() {
-  return [BUILTIN_SET, ...state.sets];
+  return [...BUILTIN_SETS, ...state.sets];
 }
 function enabledSets() {
   return allSets().filter((s) => state.enabledSetIds.has(s.id));

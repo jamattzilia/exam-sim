@@ -403,6 +403,21 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .palette-btn.checked-partial { background: #fef3c7; border-color: var(--amber); }
 .palette-btn.checked-incorrect { background: #fee2e2; border-color: var(--red); }
 .palette-btn.current { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Progress page */
+.weak-row { grid-template-columns: minmax(0, 260px) 1fr 90px auto; }
+.weak-row .bd-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 12px; }
+.history-table th, .history-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.history-table th { color: var(--text-muted); font-weight: 600; }
+.pass-text { color: var(--green); font-weight: 600; }
+.fail-text { color: var(--red); font-weight: 600; }
+@media (max-width: 640px) {
+  .weak-row { grid-template-columns: 1fr auto; }
+  .weak-row .bd-num { display: none; }
+  .history-table { font-size: 0.78rem; }
+}
+#attempt-history { overflow-x: auto; }
 </style>
 </head>
 <body>
@@ -410,6 +425,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
     <h1>CompTIA Security+ <span class="accent">SY0-701</span> Exam Simulator</h1>
     <nav class="nav">
       <button class="nav-btn active" data-page="page-setup">Setup</button>
+      <button class="nav-btn" data-page="page-progress">Progress</button>
       <button class="nav-btn" data-page="page-instructions">Instructions &amp; Upload Format</button>
     </nav>
   </header>
@@ -537,6 +553,30 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
           <button id="back-to-setup-btn" class="btn">Back to setup</button>
         </div>
         <div id="review-list" class="review-list"></div>
+      </div>
+    </section>
+
+    <!-- ============================== PROGRESS PAGE ============================== -->
+    <section id="page-progress" class="page">
+      <div class="panel">
+        <h2>Review</h2>
+        <p class="hint">
+          Spaced repetition: a question you miss is due again right away; each correct answer
+          pushes its next review further out (1, 3, 7, then 21 days).
+        </p>
+        <div id="review-actions" class="quick-actions"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Weakest objectives</h2>
+        <p class="hint">Accuracy per objective across all finished attempts, weakest first.</p>
+        <div id="weak-objectives" class="breakdown"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Attempt history</h2>
+        <div id="attempt-history"></div>
+        <button id="clear-progress-btn" class="btn-link danger">Clear history and review data</button>
       </div>
     </section>
 
@@ -2077,6 +2117,8 @@ const __mod_js_storage_js = (() => {
 const SETS_KEY = "examsim.sets.v1";
 const SETTINGS_KEY = "examsim.settings.v1";
 const SESSION_KEY = "examsim.session.v1";
+const HISTORY_KEY = "examsim.history.v1";
+const STATS_KEY = "examsim.stats.v1";
 
 function read(key, fallback) {
   try {
@@ -2136,7 +2178,105 @@ function clearSession() {
     // storage unavailable; nothing to clear
   }
 }
-return { SESSION_KEY, loadUploadedSets, addUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession };
+
+// Finished attempts (summary per attempt) and per-question review stats.
+function loadHistory() {
+  return read(HISTORY_KEY, []);
+}
+
+function saveHistory(history) {
+  return write(HISTORY_KEY, history);
+}
+
+function loadStats() {
+  return read(STATS_KEY, {});
+}
+
+function saveStats(stats) {
+  return write(STATS_KEY, stats);
+}
+
+function clearProgress() {
+  try {
+    localStorage.removeItem(HISTORY_KEY);
+    localStorage.removeItem(STATS_KEY);
+  } catch {
+    // storage unavailable; nothing to clear
+  }
+}
+return { SESSION_KEY, loadUploadedSets, addUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, loadHistory, saveHistory, loadStats, saveStats, clearProgress };
+})();
+
+// js/progress.js
+const __mod_js_progress_js = (() => {
+// Progress tracking: attempt history and spaced repetition (Leitner boxes).
+// Pure functions over plain data; persistence lives in storage.js.
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Days until a question in each box is due again. A miss sends it back to box 0
+// (due immediately); each fully correct answer moves it up one box.
+const REVIEW_INTERVAL_DAYS = [0, 1, 3, 7, 21];
+const TOP_BOX = REVIEW_INTERVAL_DAYS.length - 1;
+const MAX_ATTEMPTS = 200;
+
+// outcomes: [{ key, correct }] for questions the user actually answered.
+function updateStats(stats, outcomes, now) {
+  const next = { ...stats };
+  for (const { key, correct } of outcomes) {
+    const prev = next[key] || { box: 0, seen: 0, right: 0 };
+    next[key] = {
+      box: correct ? Math.min(prev.box + 1, TOP_BOX) : 0,
+      seen: prev.seen + 1,
+      right: prev.right + (correct ? 1 : 0),
+      lastSeen: now,
+    };
+  }
+  return next;
+}
+
+function isDue(entry, now) {
+  return Boolean(entry) && now - entry.lastSeen >= REVIEW_INTERVAL_DAYS[entry.box] * DAY_MS;
+}
+
+const isMissed = (entry) => Boolean(entry) && entry.box === 0;
+
+function attemptRecord(result, { mode, now }) {
+  const perObjective = {};
+  for (const [id, o] of Object.entries(result.perObjective)) {
+    if (o.total > 0) perObjective[id] = { points: o.points, total: o.total };
+  }
+  return {
+    finishedAt: now,
+    mode,
+    total: result.total,
+    points: result.points,
+    percent: result.percent,
+    scaled: result.scaled,
+    passed: result.passed,
+    perObjective,
+  };
+}
+
+function addAttempt(history, attempt) {
+  return [...history, attempt].slice(-MAX_ATTEMPTS);
+}
+
+// Accuracy per objective across all attempts, weakest first.
+function objectiveAccuracy(history) {
+  const totals = {};
+  for (const attempt of history) {
+    for (const [id, o] of Object.entries(attempt.perObjective || {})) {
+      const t = (totals[id] ||= { id, points: 0, total: 0 });
+      t.points += o.points;
+      t.total += o.total;
+    }
+  }
+  return Object.values(totals)
+    .map((t) => ({ ...t, percent: Math.round((t.points / t.total) * 100) }))
+    .sort((a, b) => a.percent - b.percent || b.total - a.total || a.id.localeCompare(b.id, undefined, { numeric: true }));
+}
+return { REVIEW_INTERVAL_DAYS, updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy };
 })();
 
 // js/validation.js
@@ -3052,10 +3192,11 @@ const __mod_js_ui_js = (() => {
   const { DOMAINS, OBJECTIVE_INDEX, EXAM_INFO, allObjectiveIds } = __mod_js_data_objectives_js;
   const { SAMPLE_SET } = __mod_js_data_sampleQuestions_js;
   const { DOMAIN2_21_23_SET } = __mod_js_data_domain2Set_js;
-  const { loadUploadedSets, addUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, SESSION_KEY } = __mod_js_storage_js;
+  const { loadUploadedSets, addUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, SESSION_KEY, loadHistory, saveHistory, loadStats, saveStats, clearProgress } = __mod_js_storage_js;
+  const { updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy } = __mod_js_progress_js;
   const { validateQuestionSet, BLANK_TOKEN } = __mod_js_validation_js;
   const { confirmDialog, alertDialog, dismissAllDialogs } = __mod_js_dialog_js;
-  const { buildPool, poolStatsByObjective, pickQuestions, pickQuestionsWeighted, prepareSessionQuestions, scoreSession, blankResponse, hasAnyAnswer, blankMatches, rowMatches, passingPercent, isCorrect, partialScore } = __mod_js_examEngine_js;
+  const { buildPool, poolStatsByObjective, pickQuestions, pickQuestionsWeighted, prepareSessionQuestions, scoreSession, blankResponse, hasAnyAnswer, blankMatches, rowMatches, passingPercent, isCorrect, partialScore, shuffle } = __mod_js_examEngine_js;
   const { UPLOAD_FORMAT_DOC, UPLOAD_FORMAT_EXAMPLE } = __mod_js_promptTemplate_js;
 // Sets bundled with the app. The first one is enabled by default; the others can be
 // switched on in the "Question sets" panel and are available on every device.
@@ -3113,6 +3254,7 @@ function enabledSets() {
 function showPage(id) {
   elAll(".page").forEach((p) => p.classList.toggle("active", p.id === id));
   elAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.page === id));
+  if (id === "page-progress") renderProgress();
 }
 
 // ---------------------------------------------------------------- Setup page
@@ -3426,7 +3568,7 @@ async function startExam() {
   beginSession(prepareSessionQuestions(chosen, { shuffleOptions }), timerEnabled ? Date.now() + timerMinutes * 60000 : null);
 }
 
-function beginSession(questions, endsAt) {
+function beginSession(questions, endsAt, { mode = el("#mode-select").value } = {}) {
   stopTimer();
   state.session = {
     questions,
@@ -3435,7 +3577,7 @@ function beginSession(questions, endsAt) {
     index: 0,
     timerEnabled: endsAt != null,
     partialCredit: el("#partial-toggle").checked,
-    mode: el("#mode-select").value,
+    mode,
     checked: new Set(),
     endsAt,
   };
@@ -3929,9 +4071,102 @@ async function finishExam() {
   const answers = { ...s.answers };
   for (const q of s.questions) if (!isAnswered(s, q)) answers[q._key] = [];
   const result = scoreSession(s.questions, answers, { partialCredit: s.partialCredit !== false });
+  recordProgress(s, result);
   endSession();
   showPage("page-results");
   renderResults(result);
+}
+
+// ---------------------------------------------------------------- Progress
+
+// Only answered questions feed spaced repetition: a skipped question says nothing
+// about whether it is known.
+function recordProgress(s, result) {
+  const now = Date.now();
+  const outcomes = result.details
+    .filter((d) => isAnswered(s, d.question))
+    .map((d) => ({ key: d.question._key, correct: d.correct }));
+  saveStats(updateStats(loadStats(), outcomes, now));
+  saveHistory(addAttempt(loadHistory(), attemptRecord(result, { mode: s.mode, now })));
+}
+
+// Every question in every set (enabled or not) by key, so review works regardless of filters.
+function allQuestionsByKey() {
+  return new Map(buildPool(allSets(), allObjectiveIds()).map((q) => [q._key, q]));
+}
+
+const MAX_REVIEW = 50;
+
+async function startPractice(questions, emptyMessage) {
+  if (questions.length === 0) {
+    alertDialog(emptyMessage);
+    return;
+  }
+  if (!(await confirmTakeOverOtherTab())) return;
+  const chosen = shuffle(questions).slice(0, MAX_REVIEW);
+  beginSession(prepareSessionQuestions(chosen, { shuffleOptions: el("#shuffle-options").checked }), null, { mode: "practice" });
+}
+
+function practiceObjective(objId) {
+  const fromEnabled = buildPool(enabledSets(), [objId]);
+  const pool = fromEnabled.length ? fromEnabled : buildPool(allSets(), [objId]);
+  startPractice(pickQuestions(pool, 10), `There are no questions for objective ${objId} in your question sets.`);
+}
+
+function renderProgress() {
+  const now = Date.now();
+  const stats = loadStats();
+  const questions = [...allQuestionsByKey().values()];
+  const due = questions.filter((q) => isDue(stats[q._key], now));
+  const missed = questions.filter((q) => isMissed(stats[q._key]));
+
+  const actions = el("#review-actions");
+  actions.innerHTML = "";
+  actions.append(
+    ce("button", { class: "btn primary", id: "review-due-btn", onclick: () => startPractice(due, "Nothing is due for review right now.") }, `Review due questions (${due.length})`),
+    ce("button", { class: "btn", id: "review-missed-btn", onclick: () => startPractice(missed, "No missed questions to retry.") }, `Retry all missed (${missed.length})`)
+  );
+  if (due.length > MAX_REVIEW) actions.appendChild(ce("span", { class: "hint" }, `Sessions are capped at ${MAX_REVIEW} questions.`));
+
+  const history = loadHistory();
+  const weak = el("#weak-objectives");
+  weak.innerHTML = "";
+  const accuracy = objectiveAccuracy(history);
+  if (accuracy.length === 0) weak.appendChild(ce("p", { class: "hint" }, "Finish an exam or practice session to see per-objective accuracy."));
+  for (const row of accuracy) {
+    weak.appendChild(
+      ce("div", { class: "breakdown-row weak-row" }, [
+        ce("span", { class: "bd-label", title: OBJECTIVE_INDEX[row.id]?.title || "" }, `${row.id} ${OBJECTIVE_INDEX[row.id]?.title || ""}`),
+        ce("div", { class: "bd-bar-bg" }, [ce("div", { class: "bd-bar", style: `width:${row.percent}%` })]),
+        ce("span", { class: "bd-num" }, `${row.percent}% of ${row.total}`),
+        ce("button", { class: "btn-link", onclick: () => practiceObjective(row.id) }, "Practice"),
+      ])
+    );
+  }
+
+  const list = el("#attempt-history");
+  list.innerHTML = "";
+  if (history.length === 0) {
+    list.appendChild(ce("p", { class: "hint" }, "No finished attempts yet."));
+  } else {
+    const table = ce("table", { class: "history-table" }, [
+      ce("thead", {}, [ce("tr", {}, ["Date", "Mode", "Score", "Scaled", "Result"].map((h) => ce("th", {}, h)))]),
+    ]);
+    const body = ce("tbody");
+    for (const a of [...history].reverse().slice(0, 30)) {
+      body.appendChild(
+        ce("tr", {}, [
+          ce("td", {}, new Date(a.finishedAt).toLocaleString()),
+          ce("td", {}, a.mode === "practice" ? "Practice" : "Exam"),
+          ce("td", {}, `${fmtPoints(a.points)} / ${a.total} (${a.percent}%)`),
+          ce("td", {}, String(a.scaled)),
+          ce("td", { class: a.passed ? "pass-text" : "fail-text" }, a.passed ? "PASS" : "FAIL"),
+        ])
+      );
+    }
+    table.appendChild(body);
+    list.appendChild(table);
+  }
 }
 
 // ----------------------------------------------------------------- Results
@@ -4298,6 +4533,18 @@ function wireExam() {
   });
 }
 
+function wireProgress() {
+  el("#clear-progress-btn").addEventListener("click", async () => {
+    const ok = await confirmDialog("Delete your attempt history and spaced-repetition data? This can't be undone.", {
+      confirmText: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    clearProgress();
+    renderProgress();
+  });
+}
+
 function wireInstructions() {
   el("#copy-prompt-btn").addEventListener("click", async () => {
     try {
@@ -4318,6 +4565,7 @@ function initApp() {
   wireSetup();
   wireExam();
   wireInstructions();
+  wireProgress();
   renderSetsPanel();
   renderDomainFilters();
   renderInstructions();

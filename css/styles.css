@@ -395,3 +395,18 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .palette-btn.checked-partial { background: #fef3c7; border-color: var(--amber); }
 .palette-btn.checked-incorrect { background: #fee2e2; border-color: var(--red); }
 .palette-btn.current { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Progress page */
+.weak-row { grid-template-columns: minmax(0, 260px) 1fr 90px auto; }
+.weak-row .bd-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 12px; }
+.history-table th, .history-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.history-table th { color: var(--text-muted); font-weight: 600; }
+.pass-text { color: var(--green); font-weight: 600; }
+.fail-text { color: var(--red); font-weight: 600; }
+@media (max-width: 640px) {
+  .weak-row { grid-template-columns: 1fr auto; }
+  .weak-row .bd-num { display: none; }
+  .history-table { font-size: 0.78rem; }
+}
+#attempt-history { overflow-x: auto; }

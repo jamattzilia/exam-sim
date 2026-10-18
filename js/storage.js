@@ -5,6 +5,8 @@
 const SETS_KEY = "examsim.sets.v1";
 const SETTINGS_KEY = "examsim.settings.v1";
 export const SESSION_KEY = "examsim.session.v1";
+const HISTORY_KEY = "examsim.history.v1";
+const STATS_KEY = "examsim.stats.v1";
 
 function read(key, fallback) {
   try {
@@ -60,6 +62,32 @@ export function saveSession(session) {
 export function clearSession() {
   try {
     localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // storage unavailable; nothing to clear
+  }
+}
+
+// Finished attempts (summary per attempt) and per-question review stats.
+export function loadHistory() {
+  return read(HISTORY_KEY, []);
+}
+
+export function saveHistory(history) {
+  return write(HISTORY_KEY, history);
+}
+
+export function loadStats() {
+  return read(STATS_KEY, {});
+}
+
+export function saveStats(stats) {
+  return write(STATS_KEY, stats);
+}
+
+export function clearProgress() {
+  try {
+    localStorage.removeItem(HISTORY_KEY);
+    localStorage.removeItem(STATS_KEY);
   } catch {
     // storage unavailable; nothing to clear
   }

@@ -11,7 +11,13 @@ import {
   saveSession,
   clearSession,
   SESSION_KEY,
+  loadHistory,
+  saveHistory,
+  loadStats,
+  saveStats,
+  clearProgress,
 } from "./storage.js";
+import { updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy } from "./progress.js";
 import { validateQuestionSet, BLANK_TOKEN } from "./validation.js";
 import { confirmDialog, alertDialog, dismissAllDialogs } from "./dialog.js";
 import {
@@ -28,6 +34,7 @@ import {
   passingPercent,
   isCorrect,
   partialScore,
+  shuffle,
 } from "./examEngine.js";
 import { UPLOAD_FORMAT_DOC, UPLOAD_FORMAT_EXAMPLE } from "./promptTemplate.js";
 
@@ -87,6 +94,7 @@ function enabledSets() {
 function showPage(id) {
   elAll(".page").forEach((p) => p.classList.toggle("active", p.id === id));
   elAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.page === id));
+  if (id === "page-progress") renderProgress();
 }
 
 // ---------------------------------------------------------------- Setup page
@@ -400,7 +408,7 @@ async function startExam() {
   beginSession(prepareSessionQuestions(chosen, { shuffleOptions }), timerEnabled ? Date.now() + timerMinutes * 60000 : null);
 }
 
-function beginSession(questions, endsAt) {
+function beginSession(questions, endsAt, { mode = el("#mode-select").value } = {}) {
   stopTimer();
   state.session = {
     questions,
@@ -409,7 +417,7 @@ function beginSession(questions, endsAt) {
     index: 0,
     timerEnabled: endsAt != null,
     partialCredit: el("#partial-toggle").checked,
-    mode: el("#mode-select").value,
+    mode,
     checked: new Set(),
     endsAt,
   };
@@ -903,9 +911,102 @@ async function finishExam() {
   const answers = { ...s.answers };
   for (const q of s.questions) if (!isAnswered(s, q)) answers[q._key] = [];
   const result = scoreSession(s.questions, answers, { partialCredit: s.partialCredit !== false });
+  recordProgress(s, result);
   endSession();
   showPage("page-results");
   renderResults(result);
+}
+
+// ---------------------------------------------------------------- Progress
+
+// Only answered questions feed spaced repetition: a skipped question says nothing
+// about whether it is known.
+function recordProgress(s, result) {
+  const now = Date.now();
+  const outcomes = result.details
+    .filter((d) => isAnswered(s, d.question))
+    .map((d) => ({ key: d.question._key, correct: d.correct }));
+  saveStats(updateStats(loadStats(), outcomes, now));
+  saveHistory(addAttempt(loadHistory(), attemptRecord(result, { mode: s.mode, now })));
+}
+
+// Every question in every set (enabled or not) by key, so review works regardless of filters.
+function allQuestionsByKey() {
+  return new Map(buildPool(allSets(), allObjectiveIds()).map((q) => [q._key, q]));
+}
+
+const MAX_REVIEW = 50;
+
+async function startPractice(questions, emptyMessage) {
+  if (questions.length === 0) {
+    alertDialog(emptyMessage);
+    return;
+  }
+  if (!(await confirmTakeOverOtherTab())) return;
+  const chosen = shuffle(questions).slice(0, MAX_REVIEW);
+  beginSession(prepareSessionQuestions(chosen, { shuffleOptions: el("#shuffle-options").checked }), null, { mode: "practice" });
+}
+
+function practiceObjective(objId) {
+  const fromEnabled = buildPool(enabledSets(), [objId]);
+  const pool = fromEnabled.length ? fromEnabled : buildPool(allSets(), [objId]);
+  startPractice(pickQuestions(pool, 10), `There are no questions for objective ${objId} in your question sets.`);
+}
+
+function renderProgress() {
+  const now = Date.now();
+  const stats = loadStats();
+  const questions = [...allQuestionsByKey().values()];
+  const due = questions.filter((q) => isDue(stats[q._key], now));
+  const missed = questions.filter((q) => isMissed(stats[q._key]));
+
+  const actions = el("#review-actions");
+  actions.innerHTML = "";
+  actions.append(
+    ce("button", { class: "btn primary", id: "review-due-btn", onclick: () => startPractice(due, "Nothing is due for review right now.") }, `Review due questions (${due.length})`),
+    ce("button", { class: "btn", id: "review-missed-btn", onclick: () => startPractice(missed, "No missed questions to retry.") }, `Retry all missed (${missed.length})`)
+  );
+  if (due.length > MAX_REVIEW) actions.appendChild(ce("span", { class: "hint" }, `Sessions are capped at ${MAX_REVIEW} questions.`));
+
+  const history = loadHistory();
+  const weak = el("#weak-objectives");
+  weak.innerHTML = "";
+  const accuracy = objectiveAccuracy(history);
+  if (accuracy.length === 0) weak.appendChild(ce("p", { class: "hint" }, "Finish an exam or practice session to see per-objective accuracy."));
+  for (const row of accuracy) {
+    weak.appendChild(
+      ce("div", { class: "breakdown-row weak-row" }, [
+        ce("span", { class: "bd-label", title: OBJECTIVE_INDEX[row.id]?.title || "" }, `${row.id} ${OBJECTIVE_INDEX[row.id]?.title || ""}`),
+        ce("div", { class: "bd-bar-bg" }, [ce("div", { class: "bd-bar", style: `width:${row.percent}%` })]),
+        ce("span", { class: "bd-num" }, `${row.percent}% of ${row.total}`),
+        ce("button", { class: "btn-link", onclick: () => practiceObjective(row.id) }, "Practice"),
+      ])
+    );
+  }
+
+  const list = el("#attempt-history");
+  list.innerHTML = "";
+  if (history.length === 0) {
+    list.appendChild(ce("p", { class: "hint" }, "No finished attempts yet."));
+  } else {
+    const table = ce("table", { class: "history-table" }, [
+      ce("thead", {}, [ce("tr", {}, ["Date", "Mode", "Score", "Scaled", "Result"].map((h) => ce("th", {}, h)))]),
+    ]);
+    const body = ce("tbody");
+    for (const a of [...history].reverse().slice(0, 30)) {
+      body.appendChild(
+        ce("tr", {}, [
+          ce("td", {}, new Date(a.finishedAt).toLocaleString()),
+          ce("td", {}, a.mode === "practice" ? "Practice" : "Exam"),
+          ce("td", {}, `${fmtPoints(a.points)} / ${a.total} (${a.percent}%)`),
+          ce("td", {}, String(a.scaled)),
+          ce("td", { class: a.passed ? "pass-text" : "fail-text" }, a.passed ? "PASS" : "FAIL"),
+        ])
+      );
+    }
+    table.appendChild(body);
+    list.appendChild(table);
+  }
 }
 
 // ----------------------------------------------------------------- Results
@@ -1272,6 +1373,18 @@ function wireExam() {
   });
 }
 
+function wireProgress() {
+  el("#clear-progress-btn").addEventListener("click", async () => {
+    const ok = await confirmDialog("Delete your attempt history and spaced-repetition data? This can't be undone.", {
+      confirmText: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    clearProgress();
+    renderProgress();
+  });
+}
+
 function wireInstructions() {
   el("#copy-prompt-btn").addEventListener("click", async () => {
     try {
@@ -1292,6 +1405,7 @@ export function initApp() {
   wireSetup();
   wireExam();
   wireInstructions();
+  wireProgress();
   renderSetsPanel();
   renderDomainFilters();
   renderInstructions();

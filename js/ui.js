@@ -21,6 +21,9 @@ import {
   scoreSession,
   blankResponse,
   hasAnyAnswer,
+  blankMatches,
+  rowMatches,
+  passingPercent,
 } from "./examEngine.js";
 import { UPLOAD_FORMAT_DOC, UPLOAD_FORMAT_EXAMPLE } from "./promptTemplate.js";
 
@@ -250,6 +253,7 @@ function persistSettings() {
     shuffleQuestions: el("#shuffle-questions").checked,
     shuffleOptions: el("#shuffle-options").checked,
     weighted: el("#weighted-toggle").checked,
+    partialCredit: el("#partial-toggle").checked,
   });
 }
 
@@ -269,6 +273,7 @@ function applySavedSettings(saved) {
   if (typeof saved.shuffleQuestions === "boolean") el("#shuffle-questions").checked = saved.shuffleQuestions;
   if (typeof saved.shuffleOptions === "boolean") el("#shuffle-options").checked = saved.shuffleOptions;
   if (typeof saved.weighted === "boolean") el("#weighted-toggle").checked = saved.weighted;
+  if (typeof saved.partialCredit === "boolean") el("#partial-toggle").checked = saved.partialCredit;
 }
 
 function applyStandardPreset() {
@@ -391,6 +396,7 @@ function beginSession(questions, endsAt) {
     visited: new Set(),
     index: 0,
     timerEnabled: endsAt != null,
+    partialCredit: el("#partial-toggle").checked,
     endsAt,
   };
   enterExam();
@@ -557,11 +563,12 @@ const QUESTION_RENDERERS = {
   },
 
   ordering(q, s, box) {
-    box.appendChild(ce("p", { class: "hint" }, "Use the arrows to arrange the steps in the correct order (top = first)."));
+    box.appendChild(ce("p", { class: "hint" }, "Drag the steps (or use the arrows) into the correct order (top = first)."));
     const order = s.answers[q._key] || blankResponse(q);
     const list = ce("div", { class: "order-list" });
     order.forEach((origIdx, pos) => {
-      const row = ce("div", { class: "order-item" }, [
+      const row = ce("div", { class: "order-item", "data-orig": String(origIdx) }, [
+        ce("span", { class: "order-handle", title: "Drag to reorder" }, "⠿"),
         ce("span", { class: "order-pos" }, String(pos + 1)),
         ce("span", { class: "order-text" }, q.items[origIdx]),
         ce("div", { class: "order-controls" }, [
@@ -590,6 +597,10 @@ const QUESTION_RENDERERS = {
         ]),
       ]);
       list.appendChild(row);
+    });
+    enableDragReorder(list, (next) => {
+      setAnswer(s, q, next);
+      renderExam();
     });
     box.appendChild(list);
   },
@@ -685,6 +696,45 @@ const QUESTION_RENDERERS = {
   },
 };
 
+// Pointer Events rather than HTML5 drag-and-drop, which has no touch support.
+// Mouse can drag a row from anywhere; touch only from the ⠿ handle so swiping
+// over the list still scrolls the page.
+function enableDragReorder(list, onReorder) {
+  list.addEventListener("pointerdown", (e) => {
+    const item = e.target.closest(".order-item");
+    if (!item || e.button !== 0 || e.target.closest("button")) return;
+    if (e.pointerType !== "mouse" && !e.target.closest(".order-handle")) return;
+    e.preventDefault();
+
+    const before = [...list.children].map((c) => c.dataset.orig).join();
+    item.classList.add("dragging");
+
+    // Listen on window, not with setPointerCapture: moving the captured row in the
+    // DOM releases the capture, and the drop would then never be seen.
+    const move = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      const next = [...list.children].find((c) => {
+        if (c === item) return false;
+        const r = c.getBoundingClientRect();
+        return ev.clientY < r.top + r.height / 2;
+      });
+      if (next !== item.nextElementSibling) list.insertBefore(item, next || null);
+    };
+    const end = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      item.classList.remove("dragging");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      const order = [...list.children].map((c) => Number(c.dataset.orig));
+      if (order.join() !== before) onReorder(order);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  });
+}
+
 function renderPalette() {
   const s = state.session;
   const box = el("#question-palette");
@@ -711,7 +761,12 @@ function finishExam() {
   if (unanswered > 0 && timeLeft) {
     if (!confirm(`${unanswered} question(s) are unanswered. Submit anyway?`)) return;
   }
-  const result = scoreSession(s.questions, s.answers);
+  // Unanswered questions (same rule as the palette and the warning above) are submitted
+  // empty: otherwise an unopened ordering question's shuffled default, or a simulation's
+  // untouched checkboxes that happen to match "unchecked", would earn partial credit.
+  const answers = { ...s.answers };
+  for (const q of s.questions) if (!isAnswered(s, q)) answers[q._key] = [];
+  const result = scoreSession(s.questions, answers, { partialCredit: s.partialCredit !== false });
   endSession();
   showPage("page-results");
   renderResults(result);
@@ -719,9 +774,17 @@ function finishExam() {
 
 // ----------------------------------------------------------------- Results
 
+const fmtPoints = (n) => String(Math.round(n * 100) / 100);
+
 function renderResults(result) {
-  el("#result-score").textContent = `${result.correctCount} / ${result.total} (${result.percent}%)`;
-  el("#result-scaled").textContent = `Estimated scaled score: ${result.scaled} / ${EXAM_INFO.scaledScoreRange[1]} (illustrative — passing is ${EXAM_INFO.passingScaledScore})`;
+  el("#result-score").textContent = `${fmtPoints(result.points)} / ${result.total} (${result.percent}%)`;
+  const partialNote = result.partialCredit && result.points !== result.correctCount
+    ? ` ${result.correctCount} fully correct; the rest is PBQ partial credit.`
+    : "";
+  el("#result-scaled").textContent =
+    `Estimated scaled score: ${result.scaled} / ${EXAM_INFO.scaledScoreRange[1]}, passing ${EXAM_INFO.passingScaledScore}.${partialNote} ` +
+    `CompTIA doesn't publish how raw points convert to the 100–900 scale (it is set per exam form), so this is a ` +
+    `linear estimate: you need about ${passingPercent()}% of the points to reach ${EXAM_INFO.passingScaledScore}.`;
   const passBadge = el("#result-pass");
   passBadge.textContent = result.passed ? "PASS (estimated)" : "FAIL (estimated)";
   passBadge.className = `badge-pass ${result.passed ? "pass" : "fail"}`;
@@ -730,12 +793,12 @@ function renderResults(result) {
   domainTable.innerHTML = "";
   for (const [domainId, stat] of Object.entries(result.perDomain)) {
     if (stat.total === 0) continue;
-    const pct = Math.round((stat.correct / stat.total) * 100);
+    const pct = Math.round((stat.points / stat.total) * 100);
     domainTable.appendChild(
       ce("div", { class: "breakdown-row" }, [
         ce("span", { class: "bd-label" }, `${domainId} ${stat.name}`),
         ce("div", { class: "bd-bar-bg" }, [ce("div", { class: "bd-bar", style: `width:${pct}%` })]),
-        ce("span", { class: "bd-num" }, `${stat.correct}/${stat.total} (${pct}%)`),
+        ce("span", { class: "bd-num" }, `${fmtPoints(stat.points)}/${stat.total} (${pct}%)`),
       ])
     );
   }
@@ -813,9 +876,11 @@ function exportResultsJSON(result) {
     examVersion: "SY0-701",
     generatedAt: new Date().toISOString(),
     summary: {
-      correct: result.correctCount,
+      points: result.points,
+      fullyCorrect: result.correctCount,
       total: result.total,
       percent: result.percent,
+      partialCredit: result.partialCredit,
       estimatedScaledScore: result.scaled,
       passed: result.passed,
     },
@@ -831,19 +896,31 @@ function exportResultsJSON(result) {
       rawCorrectAnswer: d.question.answer ?? null,
       rawYourAnswer: d.selected,
       correct: d.correct,
+      points: d.points,
       explanation: d.question.explanation || "",
     })),
   };
   downloadFile(`sy0-701-results-${timestampForFilename()}.json`, JSON.stringify(payload, null, 2), "application/json");
 }
 
-function csvEscape(value) {
+// Excel reads CSV with the list separator from the OS regional settings: ";" wherever
+// the decimal separator is "," (Russian, German, French...), "," elsewhere. Matching
+// it makes a double-click open the file in columns instead of one long column A.
+function csvFormat() {
+  const parts = new Intl.NumberFormat().formatToParts(1.5);
+  const decimal = parts.find((p) => p.type === "decimal")?.value || ".";
+  const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2, useGrouping: false });
+  return { delimiter: decimal === "," ? ";" : ",", number: (n) => number.format(n) };
+}
+
+function csvEscape(value, delimiter) {
   const s = String(value ?? "");
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return s.includes(delimiter) || /["\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 function exportResultsCSV(result) {
-  const header = ["id", "domain", "objective", "type", "question", "correct_answer", "your_answer", "result", "explanation"];
+  const { delimiter, number } = csvFormat();
+  const header = ["id", "domain", "objective", "type", "question", "correct_answer", "your_answer", "result", "points", "explanation"];
   const rows = result.details.map((d) => {
     const q = d.question;
     return [
@@ -854,12 +931,13 @@ function exportResultsCSV(result) {
       q.question,
       describeCorrectAnswer(q),
       describeYourAnswer(q, d.selected),
-      d.correct ? "correct" : "incorrect",
+      d.correct ? "correct" : d.points > 0 ? "partial" : "incorrect",
+      number(d.points),
       q.explanation || "",
     ];
   });
-  const summaryLine = [`Score`, `${result.correctCount}/${result.total} (${result.percent}%)`, "", "", "", "", "", "", ""];
-  const csv = [header, summaryLine, ...rows].map((r) => r.map(csvEscape).join(",")).join("\r\n");
+  const summaryLine = ["Score", `${number(result.points)}/${result.total} (${number(result.percent)}%)`, ...Array(header.length - 2).fill("")];
+  const csv = [header, summaryLine, ...rows].map((r) => r.map((v) => csvEscape(v, delimiter)).join(delimiter)).join("\r\n");
   // BOM so Excel detects UTF-8 (otherwise "→" and non-Latin text are garbled).
   downloadFile(`sy0-701-results-${timestampForFilename()}.csv`, "﻿" + csv, "text/csv;charset=utf-8");
 }
@@ -911,7 +989,7 @@ const REVIEW_BODY_RENDERERS = {
     const list = ce("ul", { class: "review-options" });
     q.blanks.forEach((b, i) => {
       const val = (selected[i] || "").trim();
-      const ok = b.accepted.some((a) => a.trim().toLowerCase() === val.toLowerCase());
+      const ok = blankMatches(b, val);
       list.appendChild(
         ce("li", { class: ok ? "opt-correct" : "opt-wrong-selected" }, `Blank ${i + 1}: "${val || "(blank)"}" ${ok ? "" : `(accepted: ${b.accepted.join(", ")})`}`)
       );
@@ -936,20 +1014,10 @@ const REVIEW_BODY_RENDERERS = {
     const list = ce("ul", { class: "review-options" });
     q.rows.forEach((row, i) => {
       const val = selected[i];
-      let ok, yourText, correctText;
-      if (row.fieldType === "checkbox") {
-        ok = Boolean(val) === Boolean(row.answer);
-        yourText = val ? "Checked" : "Unchecked";
-        correctText = row.answer ? "Checked" : "Unchecked";
-      } else if (row.fieldType === "text") {
-        ok = typeof val === "string" && val.trim().toLowerCase() === String(row.answer).trim().toLowerCase();
-        yourText = val || "(blank)";
-        correctText = row.answer;
-      } else {
-        ok = val === row.answer;
-        yourText = val || "(no answer)";
-        correctText = row.answer;
-      }
+      const ok = rowMatches(row, val);
+      const isBox = row.fieldType === "checkbox";
+      const yourText = isBox ? (val ? "Checked" : "Unchecked") : val || "(no answer)";
+      const correctText = isBox ? (row.answer ? "Checked" : "Unchecked") : row.answer;
       list.appendChild(ce("li", { class: ok ? "opt-correct" : "opt-wrong-selected" }, `${row.label}: ${yourText}${ok ? "" : ` (correct: ${correctText})`}`));
     });
     return list;
@@ -963,11 +1031,13 @@ function renderReviewDetails(result, onlyIncorrect) {
     .filter((d) => !onlyIncorrect || !d.correct)
     .forEach((d) => {
       const q = d.question;
-      const item = ce("div", { class: `review-item ${d.correct ? "correct" : "incorrect"}` });
+      const partial = !d.correct && d.points > 0;
+      const status = d.correct ? "correct" : partial ? "partial" : "incorrect";
+      const item = ce("div", { class: `review-item ${status}` });
       item.appendChild(ce("div", { class: "review-head" }, [
         ce("span", { class: "obj-code" }, q.domain),
         ce("span", {}, PBQ_TYPE_LABELS[q.type] || ""),
-        ce("span", {}, d.correct ? "✓ Correct" : "✗ Incorrect"),
+        ce("span", {}, d.correct ? "✓ Correct" : partial ? `◐ Partial credit (${Math.round(d.points * 100)}%)` : "✗ Incorrect"),
       ]));
       item.appendChild(ce("div", { class: "review-question" }, q.question));
       const renderBody = REVIEW_BODY_RENDERERS[q.type] || REVIEW_BODY_RENDERERS.choice;
@@ -1020,7 +1090,7 @@ function wireSetup() {
   });
   el("#num-questions").addEventListener("input", refreshPoolCount);
   el("#start-exam-btn").addEventListener("click", startExam);
-  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle"].forEach((sel) => {
+  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle", "#partial-toggle"].forEach((sel) => {
     el(sel).addEventListener("change", persistSettings);
   });
 

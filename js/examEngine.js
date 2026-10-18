@@ -172,80 +172,120 @@ export function hasAnyAnswer(question, response) {
   }
 }
 
+export function blankMatches(blank, value) {
+  const val = (value || "").trim().toLowerCase();
+  return blank.accepted.some((a) => a.trim().toLowerCase() === val);
+}
+
+export function rowMatches(row, value) {
+  if (row.fieldType === "checkbox") return Boolean(value) === Boolean(row.answer);
+  if (row.fieldType === "text") return typeof value === "string" && value.trim().toLowerCase() === String(row.answer).trim().toLowerCase();
+  return value === row.answer;
+}
+
+function sameSet(a, b) {
+  return [...new Set(a)].sort().join(",") === [...new Set(b || [])].sort().join(",");
+}
+
 export function isCorrect(question, response) {
+  const r = Array.isArray(response) ? response : [];
   switch (question.type) {
-    case "matching": {
-      if (!Array.isArray(response) || response.length !== question.answer.length) return false;
-      return question.answer.every((correctIdx, i) => response[i] === correctIdx);
-    }
-    case "ordering": {
-      if (!Array.isArray(response) || response.length !== question.items.length) return false;
-      return response.every((origIdx, i) => origIdx === i);
-    }
-    case "fill_blank": {
-      if (!Array.isArray(response) || response.length !== question.blanks.length) return false;
-      return question.blanks.every((b, i) => {
-        const val = (response[i] || "").trim().toLowerCase();
-        return b.accepted.some((a) => a.trim().toLowerCase() === val);
-      });
-    }
-    case "hotspot": {
-      const a = [...question.answer].sort().join(",");
-      const b = [...new Set(response || [])].sort().join(",");
-      return a === b;
-    }
-    case "simulation": {
-      if (!Array.isArray(response) || response.length !== question.rows.length) return false;
-      return question.rows.every((row, i) => {
-        const val = response[i];
-        if (row.fieldType === "checkbox") return Boolean(val) === Boolean(row.answer);
-        if (row.fieldType === "text") return typeof val === "string" && val.trim().toLowerCase() === String(row.answer).trim().toLowerCase();
-        return val === row.answer;
-      });
-    }
-    default: {
-      // single / multiple choice
-      const a = [...question.answer].sort().join(",");
-      const b = [...new Set(response || [])].sort().join(",");
-      return a === b;
-    }
+    case "matching":
+      return r.length === question.answer.length && question.answer.every((correctIdx, i) => r[i] === correctIdx);
+    case "ordering":
+      return r.length === question.items.length && r.every((origIdx, i) => origIdx === i);
+    case "fill_blank":
+      return r.length === question.blanks.length && question.blanks.every((b, i) => blankMatches(b, r[i]));
+    case "simulation":
+      return r.length === question.rows.length && question.rows.every((row, i) => rowMatches(row, r[i]));
+    default:
+      // single / multiple choice and hotspot: the selected set must equal the answer set
+      return sameSet(question.answer, r);
   }
 }
 
-export function scoreSession(questions, answersByKey) {
+// Share (0..1) of a question's parts answered correctly. Multiple choice stays
+// all-or-nothing; each PBQ part (pair, position, blank, zone, row) earns its share.
+// Wrongly selected hotspot zones cancel out correct ones, so "click everything" earns 0.
+export function partialScore(question, response) {
+  if (isCorrect(question, response)) return 1;
+  const r = Array.isArray(response) ? response : [];
+  const share = (hits, parts) => (parts > 0 ? Math.max(0, hits) / parts : 0);
+  switch (question.type) {
+    case "matching":
+      return share(question.answer.filter((a, i) => r[i] === a).length, question.answer.length);
+    case "ordering":
+      return r.length === question.items.length ? share(r.filter((v, i) => v === i).length, r.length) : 0;
+    case "fill_blank":
+      return share(question.blanks.filter((b, i) => blankMatches(b, r[i])).length, question.blanks.length);
+    case "hotspot": {
+      const answer = new Set(question.answer);
+      const picked = [...new Set(r)];
+      const hits = picked.filter((z) => answer.has(z)).length;
+      return share(hits - (picked.length - hits), answer.size);
+    }
+    case "simulation":
+      // length guard: a missing value would otherwise "match" an unchecked checkbox
+      return r.length === question.rows.length ? share(question.rows.filter((row, i) => rowMatches(row, r[i])).length, r.length) : 0;
+    default:
+      return 0;
+  }
+}
+
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// Each question is worth one point. With `partialCredit`, PBQs earn a fraction of
+// their point per correct part; otherwise every question is all-or-nothing.
+export function scoreSession(questions, answersByKey, { partialCredit = false } = {}) {
   const perObjective = {};
   const perDomain = {};
-  for (const d of DOMAINS) perDomain[d.id] = { correct: 0, total: 0, name: d.name };
+  for (const d of DOMAINS) perDomain[d.id] = { correct: 0, points: 0, total: 0, name: d.name };
   for (const objId of Object.keys(OBJECTIVE_INDEX)) {
-    perObjective[objId] = { correct: 0, total: 0, title: OBJECTIVE_INDEX[objId].title };
+    perObjective[objId] = { correct: 0, points: 0, total: 0, title: OBJECTIVE_INDEX[objId].title };
   }
 
   let correctCount = 0;
+  let points = 0;
   const details = [];
 
   for (const q of questions) {
     const selected = answersByKey[q._key] ?? blankResponse(q);
     const correct = isCorrect(q, selected);
+    const earned = partialCredit ? partialScore(q, selected) : correct ? 1 : 0;
     if (correct) correctCount++;
+    points += earned;
 
-    const domainId = OBJECTIVE_INDEX[q.domain]?.domainId;
-    perObjective[q.domain].total++;
-    if (correct) perObjective[q.domain].correct++;
-    if (domainId) {
-      perDomain[domainId].total++;
-      if (correct) perDomain[domainId].correct++;
+    const buckets = [perObjective[q.domain], perDomain[OBJECTIVE_INDEX[q.domain]?.domainId]].filter(Boolean);
+    for (const b of buckets) {
+      b.total++;
+      b.points = round2(b.points + earned);
+      if (correct) b.correct++;
     }
 
-    details.push({ question: q, selected, correct });
+    details.push({ question: q, selected, correct, points: round2(earned) });
   }
 
   const total = questions.length;
-  const percent = total ? Math.round((correctCount / total) * 1000) / 10 : 0;
-  const scaled = Math.round(
-    EXAM_INFO.scaledScoreRange[0] +
-      (correctCount / Math.max(total, 1)) * (EXAM_INFO.scaledScoreRange[1] - EXAM_INFO.scaledScoreRange[0])
-  );
-  const passed = scaled >= EXAM_INFO.passingScaledScore;
+  const ratio = total ? points / total : 0;
+  const [lo, hi] = EXAM_INFO.scaledScoreRange;
+  const scaled = Math.round(lo + ratio * (hi - lo));
 
-  return { correctCount, total, percent, scaled, passed, perDomain, perObjective, details };
+  return {
+    correctCount,
+    points: round2(points),
+    total,
+    percent: Math.round(ratio * 1000) / 10,
+    scaled,
+    passed: scaled >= EXAM_INFO.passingScaledScore,
+    partialCredit,
+    perDomain,
+    perObjective,
+    details,
+  };
+}
+
+// Share of points this linear model needs for the passing scaled score (750 → 81.25%).
+export function passingPercent() {
+  const [lo, hi] = EXAM_INFO.scaledScoreRange;
+  return Math.round(((EXAM_INFO.passingScaledScore - lo) / (hi - lo)) * 1000) / 10;
 }

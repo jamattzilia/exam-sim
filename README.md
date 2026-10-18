@@ -29,9 +29,17 @@ modules, served as static files.
   an abstract diagram), and simulation (configure a table of settings, e.g.
   firewall rules) — see `js/promptTemplate.js` / the Instructions tab for the
   schema of each type.
+- Ordering PBQs can be reordered by dragging (mouse, or the ⠿ handle on
+  touch screens) or with the ▲/▼ buttons.
+- Optional PBQ partial credit: each correct part of a PBQ (pair, step,
+  blank, zone, row) earns its share of the question's point. CompTIA does not
+  publish its PBQ scoring rules or its raw-to-scaled conversion, so the
+  100–900 score shown is a clearly labeled linear estimate.
 - Setup filters and exam options persist in `localStorage` across reloads,
   an in-progress exam can be resumed after a reload or closed tab, and
-  results can be exported as JSON or CSV.
+  results can be exported as JSON or CSV. The CSV separator follows the
+  browser's regional format (`;` where the decimal mark is a comma, e.g.
+  Russian), so Excel opens it in proper columns.
 
 ## Running locally
 

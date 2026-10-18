@@ -12,6 +12,11 @@ const STRINGS = {
     "nav.progress": "Progress",
     "nav.instructions": "Instructions & Upload Format",
     "lang.label": "Interface language",
+    "theme.label": "Theme",
+    "theme.auto": "Auto",
+    "theme.light": "Light",
+    "theme.dark": "Dark",
+    "exam.shortcuts": "Keys: 1–9 choose · ← → previous/next · M mark · C check (practice)",
 
     "setup.sets.title": "1. Question sets",
     "setup.sets.hint": "Enable one or more sets below to combine them into a single question pool. Upload new sets from the Instructions tab.",
@@ -202,6 +207,11 @@ const STRINGS = {
     "nav.progress": "Прогресс",
     "nav.instructions": "Инструкция и формат загрузки",
     "lang.label": "Язык интерфейса",
+    "theme.label": "Тема",
+    "theme.auto": "Авто",
+    "theme.light": "Светлая",
+    "theme.dark": "Тёмная",
+    "exam.shortcuts": "Клавиши: 1–9 выбор · ← → назад/далее · M отметить · C проверить (тренировка)",
 
     "setup.sets.title": "1. Наборы вопросов",
     "setup.sets.hint": "Включите один или несколько наборов — они объединятся в общий пул вопросов. Новые наборы загружаются на вкладке «Инструкция».",

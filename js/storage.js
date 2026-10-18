@@ -8,6 +8,8 @@ export const SESSION_KEY = "examsim.session.v1";
 const HISTORY_KEY = "examsim.history.v1";
 const STATS_KEY = "examsim.stats.v1";
 const LANGUAGE_KEY = "examsim.lang.v1";
+// Also read by the inline script in index.html's <head>; keep the key in sync.
+const THEME_KEY = "examsim.theme.v1";
 
 function read(key, fallback) {
   try {
@@ -78,6 +80,14 @@ export function loadLanguage() {
 
 export function saveLanguage(lang) {
   write(LANGUAGE_KEY, lang);
+}
+
+export function loadTheme() {
+  return read(THEME_KEY, "auto");
+}
+
+export function saveTheme(theme) {
+  write(THEME_KEY, theme);
 }
 
 // Finished attempts (summary per attempt) and per-question review stats.

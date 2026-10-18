@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SY0-701 Exam Simulator</title>
   <link rel="stylesheet" href="css/styles.css" />
+  <!-- Apply a saved theme before first paint so a dark-theme user doesn't see a light flash. -->
+  <script>
+    try {
+      var theme = JSON.parse(localStorage.getItem("examsim.theme.v1"));
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <header class="topbar">
@@ -16,6 +23,11 @@
       <select id="lang-select" class="lang-select" data-i18n-title="lang.label" title="Interface language">
         <option value="en">EN</option>
         <option value="ru">RU</option>
+      </select>
+      <select id="theme-select" class="lang-select" data-i18n-title="theme.label" title="Theme">
+        <option value="auto" data-i18n="theme.auto">Auto</option>
+        <option value="light" data-i18n="theme.light">Light</option>
+        <option value="dark" data-i18n="theme.dark">Dark</option>
       </select>
     </nav>
   </header>
@@ -128,6 +140,7 @@
         <button id="next-btn" class="btn" data-i18n="exam.next">Next ▶</button>
         <button id="finish-btn" class="btn primary" style="display:none" data-i18n="exam.review">Review &amp; submit</button>
       </div>
+      <p class="hint shortcuts-hint" data-i18n="exam.shortcuts">Keys: 1–9 choose · ← → previous/next · M mark · C check (practice)</p>
       </div>
 
       <!-- Shown before submitting, like the real exam's review screen. -->

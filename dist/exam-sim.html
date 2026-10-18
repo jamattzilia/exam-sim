@@ -7,6 +7,7 @@
   <title>SY0-701 Exam Simulator</title>
   <style>
 :root {
+  color-scheme: light;
   --bg: #f4f6f9;
   --panel: #ffffff;
   --border: #e0e4ea;
@@ -14,10 +15,68 @@
   --text-muted: #6b7685;
   --accent: #2563eb;
   --accent-dark: #1d4ed8;
+  --on-accent: #ffffff;
   --green: #16a34a;
   --red: #dc2626;
   --amber: #d97706;
+  --surface-2: #eef1f6;
+  --subtle: #f8fafc;
+  --answered-bg: #dbeafe;
+  --answered-border: #93c5fd;
+  --ok-bg: #dcfce7;
+  --bad-bg: #fee2e2;
+  --warn-bg: #fef3c7;
+  --accent-soft: rgba(37, 99, 235, 0.08);
+  --accent-soft-strong: rgba(37, 99, 235, 0.16);
   --radius: 10px;
+}
+
+/* Dark theme: follows the system unless the user picked light, or forced via the picker. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0f172a;
+    --panel: #172033;
+    --border: #2b3a52;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --accent: #3b82f6;
+    --accent-dark: #2563eb;
+    --green: #4ade80;
+    --red: #f87171;
+    --amber: #fbbf24;
+    --surface-2: #1e293b;
+    --subtle: #1a2436;
+    --answered-bg: #1e3a5f;
+    --answered-border: #3b82f6;
+    --ok-bg: #14532d;
+    --bad-bg: #4c1d1d;
+    --warn-bg: #4a3410;
+    --accent-soft: rgba(59, 130, 246, 0.15);
+    --accent-soft-strong: rgba(59, 130, 246, 0.3);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f172a;
+  --panel: #172033;
+  --border: #2b3a52;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent: #3b82f6;
+  --accent-dark: #2563eb;
+  --green: #4ade80;
+  --red: #f87171;
+  --amber: #fbbf24;
+  --surface-2: #1e293b;
+  --subtle: #1a2436;
+  --answered-bg: #1e3a5f;
+  --answered-border: #3b82f6;
+  --ok-bg: #14532d;
+  --bad-bg: #4c1d1d;
+  --warn-bg: #4a3410;
+  --accent-soft: rgba(59, 130, 246, 0.15);
+  --accent-soft-strong: rgba(59, 130, 246, 0.3);
 }
 
 * { box-sizing: border-box; }
@@ -31,7 +90,7 @@ body {
 }
 
 code {
-  background: #eef1f6;
+  background: var(--surface-2);
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 0.9em;
@@ -63,7 +122,7 @@ code {
   font-size: 0.9rem;
   color: var(--text);
 }
-.nav-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.nav-btn.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
 main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 
@@ -97,7 +156,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .set-check { display: flex; align-items: center; gap: 8px; }
 
 .badge {
-  background: #eef1f6;
+  background: var(--surface-2);
   color: var(--text-muted);
   border-radius: 999px;
   padding: 1px 9px;
@@ -149,7 +208,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .field-row input[type="number"] { width: 90px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; }
 
 .btn {
-  background: #fff;
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 9px 16px;
@@ -157,7 +216,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
   font-size: 0.9rem;
   color: var(--text);
 }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.primary:hover { background: var(--accent-dark); }
 .btn.big { width: 100%; padding: 12px; font-size: 1rem; margin-top: 6px; }
 .btn.small { padding: 5px 10px; font-size: 0.82rem; }
@@ -171,7 +230,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .warn-list { color: var(--amber); }
 
 #file-input { margin: 8px 0; }
-#upload-result { margin-top: 12px; padding: 12px; background: #f9fafc; border-radius: 8px; }
+#upload-result { margin-top: 12px; padding: 12px; background: var(--subtle); border-radius: 8px; }
 
 .instructions-pre {
   white-space: pre-wrap;
@@ -199,13 +258,13 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
   width: 32px; height: 32px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--panel);
   cursor: pointer;
   font-size: 0.8rem;
 }
-.palette-btn.answered { background: #dbeafe; border-color: #93c5fd; }
+.palette-btn.answered { background: var(--answered-bg); border-color: var(--answered-border); }
 .palette-btn.marked { border-color: var(--amber); box-shadow: inset 0 0 0 2px var(--amber); }
-.palette-btn.current { background: var(--accent); color: #fff; border-color: var(--accent); }
+.palette-btn.current { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 
 .question-panel { min-height: 220px; }
 .obj-tag { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 8px; font-family: ui-monospace, monospace; }
@@ -220,7 +279,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
   padding: 10px 12px;
   cursor: pointer;
 }
-.option-row:hover { background: #f8fafc; }
+.option-row:hover { background: var(--subtle); }
 
 .exam-nav { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
 #mark-review-btn.active { border-color: var(--amber); color: var(--amber); }
@@ -247,13 +306,13 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 9px 12px;
-  background: #fff;
+  background: var(--panel);
 }
 .order-pos {
   width: 26px; height: 26px;
   border-radius: 50%;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   display: flex; align-items: center; justify-content: center;
   font-size: 0.8rem; font-weight: 600; flex-shrink: 0;
 }
@@ -280,7 +339,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .blank-input {
   border: none;
   border-bottom: 2px solid var(--accent);
-  background: #f0f5ff;
+  background: var(--accent-soft);
   padding: 3px 6px;
   font-size: 1rem;
   min-width: 140px;
@@ -292,7 +351,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 7;
-  background: repeating-linear-gradient(45deg, #f4f6f9, #f4f6f9 10px, #eef1f6 10px, #eef1f6 20px);
+  background: repeating-linear-gradient(45deg, var(--bg), var(--bg) 10px, var(--surface-2) 10px, var(--surface-2) 20px);
   border: 1px dashed var(--border);
   border-radius: 8px;
   overflow: hidden;
@@ -300,7 +359,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .hotspot-zone {
   position: absolute;
   border: 2px solid var(--accent);
-  background: rgba(37, 99, 235, 0.08);
+  background: var(--accent-soft);
   color: var(--text);
   border-radius: 6px;
   cursor: pointer;
@@ -312,8 +371,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
   justify-content: center;
   text-align: center;
 }
-.hotspot-zone:hover { background: rgba(37, 99, 235, 0.16); }
-.hotspot-zone.selected { background: var(--accent); color: #fff; }
+.hotspot-zone:hover { background: var(--accent-soft-strong); }
+.hotspot-zone.selected { background: var(--accent); color: var(--on-accent); }
 
 .sim-table { display: flex; flex-direction: column; gap: 6px; }
 .sim-row {
@@ -332,13 +391,13 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .result-summary { display: flex; align-items: center; gap: 16px; }
 .result-score { font-size: 1.6rem; font-weight: 700; }
 .badge-pass { padding: 4px 12px; border-radius: 999px; font-weight: 600; font-size: 0.85rem; }
-.badge-pass.pass { background: #dcfce7; color: var(--green); }
-.badge-pass.fail { background: #fee2e2; color: var(--red); }
+.badge-pass.pass { background: var(--ok-bg); color: var(--green); }
+.badge-pass.fail { background: var(--bad-bg); color: var(--red); }
 
 .breakdown { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
 .breakdown-row { display: grid; grid-template-columns: 260px 1fr 110px; align-items: center; gap: 10px; font-size: 0.85rem; }
 .bd-label { color: var(--text-muted); }
-.bd-bar-bg { background: #eef1f6; border-radius: 999px; height: 8px; overflow: hidden; }
+.bd-bar-bg { background: var(--surface-2); border-radius: 999px; height: 8px; overflow: hidden; }
 .bd-bar { background: var(--accent); height: 100%; }
 .bd-num { text-align: right; font-family: ui-monospace, monospace; }
 
@@ -354,7 +413,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .review-options li { padding: 2px 0; }
 .opt-correct { color: var(--green); font-weight: 600; }
 .opt-wrong-selected { color: var(--red); text-decoration: line-through; }
-.review-explanation { font-size: 0.85rem; color: var(--text-muted); background: #f9fafc; padding: 8px 10px; border-radius: 6px; }
+.review-explanation { font-size: 0.85rem; color: var(--text-muted); background: var(--subtle); padding: 8px 10px; border-radius: 6px; }
 
 .footer { text-align: center; color: var(--text-muted); font-size: 0.78rem; padding: 24px; }
 
@@ -378,7 +437,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 }
 .modal-message { margin: 0 0 18px; white-space: pre-line; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
-.btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+.btn.danger { background: var(--red); border-color: var(--red); color: var(--on-accent); }
 
 @media (max-width: 640px) {
   main { padding: 12px; }
@@ -400,10 +459,10 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .options-box.locked .option-row,
 .options-box.locked .order-item,
 .options-box.locked .hotspot-zone { cursor: default; }
-.palette-btn.checked-correct { background: #dcfce7; border-color: var(--green); }
-.palette-btn.checked-partial { background: #fef3c7; border-color: var(--amber); }
-.palette-btn.checked-incorrect { background: #fee2e2; border-color: var(--red); }
-.palette-btn.current { background: var(--accent); color: #fff; border-color: var(--accent); }
+.palette-btn.checked-correct { background: var(--ok-bg); border-color: var(--green); }
+.palette-btn.checked-partial { background: var(--warn-bg); border-color: var(--amber); }
+.palette-btn.checked-incorrect { background: var(--bad-bg); border-color: var(--red); }
+.palette-btn.current { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 
 /* Progress page */
 .weak-row { grid-template-columns: minmax(0, 260px) 1fr 90px auto; }
@@ -429,7 +488,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
   border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
   background: var(--panel); color: var(--text); cursor: pointer; font-size: 0.8rem; text-align: left;
 }
-.review-cell.answered { border-color: #93c5fd; background: #eff6ff; }
+.review-cell.answered { border-color: var(--answered-border); background: var(--answered-bg); }
 .review-cell.unanswered { border-color: var(--red); }
 .review-cell.marked { box-shadow: inset 0 0 0 2px var(--amber); }
 .review-cell-mark { color: var(--amber); }
@@ -437,7 +496,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 /* Timer and toasts */
 #exam-timer-wrap.low { color: var(--red); font-weight: 700; }
 .toast-region { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 90; width: min(420px, calc(100% - 32px)); }
-.toast { background: #1e293b; color: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); font-size: 0.9rem; }
+.toast { background: #1e293b; color: #f8fafc; padding: 10px 14px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); font-size: 0.9rem; }
 
 /* Set management */
 .set-actions { display: flex; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
@@ -446,7 +505,16 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 @media (max-width: 640px) {
   .set-row { flex-wrap: wrap; gap: 4px; }
 }
+.shortcuts-hint { margin-top: 10px; font-size: 0.78rem; }
+@media (hover: none) { .shortcuts-hint { display: none; } }
 </style>
+  <!-- Apply a saved theme before first paint so a dark-theme user doesn't see a light flash. -->
+  <script>
+    try {
+      var theme = JSON.parse(localStorage.getItem("examsim.theme.v1"));
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <header class="topbar">
@@ -458,6 +526,11 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
       <select id="lang-select" class="lang-select" data-i18n-title="lang.label" title="Interface language">
         <option value="en">EN</option>
         <option value="ru">RU</option>
+      </select>
+      <select id="theme-select" class="lang-select" data-i18n-title="theme.label" title="Theme">
+        <option value="auto" data-i18n="theme.auto">Auto</option>
+        <option value="light" data-i18n="theme.light">Light</option>
+        <option value="dark" data-i18n="theme.dark">Dark</option>
       </select>
     </nav>
   </header>
@@ -570,6 +643,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
         <button id="next-btn" class="btn" data-i18n="exam.next">Next ▶</button>
         <button id="finish-btn" class="btn primary" style="display:none" data-i18n="exam.review">Review &amp; submit</button>
       </div>
+      <p class="hint shortcuts-hint" data-i18n="exam.shortcuts">Keys: 1–9 choose · ← → previous/next · M mark · C check (practice)</p>
       </div>
 
       <!-- Shown before submitting, like the real exam's review screen. -->
@@ -2173,6 +2247,8 @@ const SESSION_KEY = "examsim.session.v1";
 const HISTORY_KEY = "examsim.history.v1";
 const STATS_KEY = "examsim.stats.v1";
 const LANGUAGE_KEY = "examsim.lang.v1";
+// Also read by the inline script in index.html's <head>; keep the key in sync.
+const THEME_KEY = "examsim.theme.v1";
 
 function read(key, fallback) {
   try {
@@ -2245,6 +2321,14 @@ function saveLanguage(lang) {
   write(LANGUAGE_KEY, lang);
 }
 
+function loadTheme() {
+  return read(THEME_KEY, "auto");
+}
+
+function saveTheme(theme) {
+  write(THEME_KEY, theme);
+}
+
 // Finished attempts (summary per attempt) and per-question review stats.
 function loadHistory() {
   return read(HISTORY_KEY, []);
@@ -2270,7 +2354,7 @@ function clearProgress() {
     // storage unavailable; nothing to clear
   }
 }
-return { SESSION_KEY, loadUploadedSets, addUploadedSet, renameUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, loadLanguage, saveLanguage, loadHistory, saveHistory, loadStats, saveStats, clearProgress };
+return { SESSION_KEY, loadUploadedSets, addUploadedSet, renameUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, loadLanguage, saveLanguage, loadTheme, saveTheme, loadHistory, saveHistory, loadStats, saveStats, clearProgress };
 })();
 
 // js/progress.js
@@ -2590,6 +2674,11 @@ const STRINGS = {
     "nav.progress": "Progress",
     "nav.instructions": "Instructions & Upload Format",
     "lang.label": "Interface language",
+    "theme.label": "Theme",
+    "theme.auto": "Auto",
+    "theme.light": "Light",
+    "theme.dark": "Dark",
+    "exam.shortcuts": "Keys: 1–9 choose · ← → previous/next · M mark · C check (practice)",
 
     "setup.sets.title": "1. Question sets",
     "setup.sets.hint": "Enable one or more sets below to combine them into a single question pool. Upload new sets from the Instructions tab.",
@@ -2780,6 +2869,11 @@ const STRINGS = {
     "nav.progress": "Прогресс",
     "nav.instructions": "Инструкция и формат загрузки",
     "lang.label": "Язык интерфейса",
+    "theme.label": "Тема",
+    "theme.auto": "Авто",
+    "theme.light": "Светлая",
+    "theme.dark": "Тёмная",
+    "exam.shortcuts": "Клавиши: 1–9 выбор · ← → назад/далее · M отметить · C проверить (тренировка)",
 
     "setup.sets.title": "1. Наборы вопросов",
     "setup.sets.hint": "Включите один или несколько наборов — они объединятся в общий пул вопросов. Новые наборы загружаются на вкладке «Инструкция».",
@@ -3755,7 +3849,7 @@ const __mod_js_ui_js = (() => {
   const { DOMAINS, OBJECTIVE_INDEX, EXAM_INFO, allObjectiveIds } = __mod_js_data_objectives_js;
   const { SAMPLE_SET } = __mod_js_data_sampleQuestions_js;
   const { DOMAIN2_21_23_SET } = __mod_js_data_domain2Set_js;
-  const { loadUploadedSets, addUploadedSet, removeUploadedSet, renameUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, SESSION_KEY, loadLanguage, saveLanguage, loadHistory, saveHistory, loadStats, saveStats, clearProgress } = __mod_js_storage_js;
+  const { loadUploadedSets, addUploadedSet, removeUploadedSet, renameUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, SESSION_KEY, loadLanguage, saveLanguage, loadTheme, saveTheme, loadHistory, saveHistory, loadStats, saveStats, clearProgress } = __mod_js_storage_js;
   const { updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy } = __mod_js_progress_js;
   const { validateQuestionSet, BLANK_TOKEN } = __mod_js_validation_js;
   const { confirmDialog, alertDialog, promptDialog, dismissAllDialogs, showToast } = __mod_js_dialog_js;
@@ -5254,6 +5348,48 @@ function applyLanguage(lang) {
   if (el("#page-progress").classList.contains("active")) renderProgress();
 }
 
+function applyTheme(theme) {
+  const valid = theme === "light" || theme === "dark" ? theme : "auto";
+  if (valid === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = valid;
+  el("#theme-select").value = valid;
+}
+
+function wireTheme() {
+  applyTheme(loadTheme());
+  el("#theme-select").addEventListener("change", (e) => {
+    saveTheme(e.target.value);
+    applyTheme(e.target.value);
+  });
+}
+
+// Exam keyboard shortcuts. Ignored while typing, with modifier keys, or when a
+// dialog is open (dialogs handle their own keys).
+function onExamKey(e) {
+  const s = state.session;
+  if (!s || state.reviewing || !el("#page-exam").classList.contains("active")) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector(".modal-backdrop")) return;
+  const target = e.target;
+  if (target.matches?.("input[type=text], input[type=number], select, textarea")) return;
+  const q = s.questions[s.index];
+  const clickIf = (selector) => {
+    const button = el(selector);
+    if (button && !button.disabled && button.offsetParent !== null) button.click();
+  };
+
+  if (/^[1-9]$/.test(e.key)) {
+    const n = Number(e.key) - 1;
+    const choices = q.type === "hotspot" ? elAll("#options-box .hotspot-zone") : elAll("#options-box .option-row input");
+    const choice = choices[n];
+    if (choice && !choice.disabled) choice.click();
+  } else if (e.key === "ArrowRight") clickIf("#next-btn");
+  else if (e.key === "ArrowLeft") clickIf("#prev-btn");
+  else if (e.key === "m" || e.key === "M") clickIf("#mark-review-btn");
+  else if (e.key === "c" || e.key === "C") clickIf("#check-btn");
+  else return;
+  e.preventDefault();
+}
+
 function wireLanguage() {
   el("#lang-select").addEventListener("change", (e) => {
     saveLanguage(e.target.value);
@@ -5270,6 +5406,8 @@ function initApp() {
   wireInstructions();
   wireProgress();
   wireLanguage();
+  wireTheme();
+  document.addEventListener("keydown", onExamKey);
   setLanguage(loadLanguage() || defaultLanguage());
   el("#lang-select").value = getLanguage();
   translatePage();

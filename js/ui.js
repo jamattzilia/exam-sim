@@ -14,6 +14,8 @@ import {
   SESSION_KEY,
   loadLanguage,
   saveLanguage,
+  loadTheme,
+  saveTheme,
   loadHistory,
   saveHistory,
   loadStats,
@@ -1536,6 +1538,48 @@ function applyLanguage(lang) {
   if (el("#page-progress").classList.contains("active")) renderProgress();
 }
 
+function applyTheme(theme) {
+  const valid = theme === "light" || theme === "dark" ? theme : "auto";
+  if (valid === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = valid;
+  el("#theme-select").value = valid;
+}
+
+function wireTheme() {
+  applyTheme(loadTheme());
+  el("#theme-select").addEventListener("change", (e) => {
+    saveTheme(e.target.value);
+    applyTheme(e.target.value);
+  });
+}
+
+// Exam keyboard shortcuts. Ignored while typing, with modifier keys, or when a
+// dialog is open (dialogs handle their own keys).
+function onExamKey(e) {
+  const s = state.session;
+  if (!s || state.reviewing || !el("#page-exam").classList.contains("active")) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector(".modal-backdrop")) return;
+  const target = e.target;
+  if (target.matches?.("input[type=text], input[type=number], select, textarea")) return;
+  const q = s.questions[s.index];
+  const clickIf = (selector) => {
+    const button = el(selector);
+    if (button && !button.disabled && button.offsetParent !== null) button.click();
+  };
+
+  if (/^[1-9]$/.test(e.key)) {
+    const n = Number(e.key) - 1;
+    const choices = q.type === "hotspot" ? elAll("#options-box .hotspot-zone") : elAll("#options-box .option-row input");
+    const choice = choices[n];
+    if (choice && !choice.disabled) choice.click();
+  } else if (e.key === "ArrowRight") clickIf("#next-btn");
+  else if (e.key === "ArrowLeft") clickIf("#prev-btn");
+  else if (e.key === "m" || e.key === "M") clickIf("#mark-review-btn");
+  else if (e.key === "c" || e.key === "C") clickIf("#check-btn");
+  else return;
+  e.preventDefault();
+}
+
 function wireLanguage() {
   el("#lang-select").addEventListener("change", (e) => {
     saveLanguage(e.target.value);
@@ -1552,6 +1596,8 @@ export function initApp() {
   wireInstructions();
   wireProgress();
   wireLanguage();
+  wireTheme();
+  document.addEventListener("keydown", onExamKey);
   setLanguage(loadLanguage() || defaultLanguage());
   el("#lang-select").value = getLanguage();
   translatePage();

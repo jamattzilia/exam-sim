@@ -71,11 +71,23 @@ npm test             # Playwright end-to-end tests (needs Chromium: npx playwrig
 `dist/exam-sim.html` is committed; rebuild it after changing the sources (a
 test fails if it is out of date).
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request: it checks
+that `dist/exam-sim.html` matches the sources and runs the whole Playwright
+suite in Chromium. On failure the HTML report is attached to the run.
+
 ## Deploying
 
-The app is fully static — deploy the repository as-is to GitHub Pages,
-Netlify, Vercel, S3, or any static host. There is no server-side component;
-`dist/exam-sim.html` can also be hosted on its own.
+The app is fully static — any static host works (GitHub Pages, Netlify,
+Vercel, S3…), and `dist/exam-sim.html` can also be hosted on its own.
+
+**GitHub Pages** is set up in `.github/workflows/pages.yml`: after CI passes
+on a push to the default branch, the site is published automatically. It
+needs a one-time switch in the repository: **Settings → Pages → Build and
+deployment → Source: GitHub Actions**. Until then that workflow fails (CI is
+unaffected). The site URL is shown in the Pages settings and on each deploy
+run; the single-file version is at `<site URL>/dist/exam-sim.html`.
 
 ## Uploading your own question sets
 

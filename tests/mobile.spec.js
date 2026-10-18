@@ -20,3 +20,10 @@ test("no horizontal scrolling on setup, every question type, results, and progre
   await expect(page.locator(".history-table")).toBeVisible();
   expect(await overflows(page)).toBe(false);
 });
+
+test("the Russian interface also fits a phone screen", async ({ page }) => {
+  await openApp(page, { lang: "ru" });
+  expect(await overflows(page)).toBe(false);
+  await page.click('button.nav-btn[data-page="page-instructions"]');
+  expect(await overflows(page)).toBe(false);
+});

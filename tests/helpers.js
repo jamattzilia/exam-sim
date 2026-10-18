@@ -9,11 +9,13 @@ export const ORDERING_STEPS = [
   "Post-incident activity (lessons learned)",
 ];
 
-// Fails the test if the app ever falls back to a native confirm()/alert().
-export async function openApp(page) {
+// Fails the test if the app ever falls back to a native confirm()/alert(). Tests locate
+// elements by their English text, so the interface language is pinned unless given.
+export async function openApp(page, { lang = "en" } = {}) {
   page.on("dialog", (d) => {
     throw new Error(`Unexpected native dialog: ${d.message()}`);
   });
+  if (lang) await page.addInitScript((l) => localStorage.setItem("examsim.lang.v1", JSON.stringify(l)), lang);
   await page.goto("/index.html");
 }
 

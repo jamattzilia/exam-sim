@@ -7,6 +7,7 @@ const SETTINGS_KEY = "examsim.settings.v1";
 export const SESSION_KEY = "examsim.session.v1";
 const HISTORY_KEY = "examsim.history.v1";
 const STATS_KEY = "examsim.stats.v1";
+const LANGUAGE_KEY = "examsim.lang.v1";
 
 function read(key, fallback) {
   try {
@@ -65,6 +66,14 @@ export function clearSession() {
   } catch {
     // storage unavailable; nothing to clear
   }
+}
+
+export function loadLanguage() {
+  return read(LANGUAGE_KEY, null);
+}
+
+export function saveLanguage(lang) {
+  write(LANGUAGE_KEY, lang);
 }
 
 // Finished attempts (summary per attempt) and per-question review stats.

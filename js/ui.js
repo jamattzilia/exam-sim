@@ -11,6 +11,8 @@ import {
   saveSession,
   clearSession,
   SESSION_KEY,
+  loadLanguage,
+  saveLanguage,
   loadHistory,
   saveHistory,
   loadStats,
@@ -20,6 +22,7 @@ import {
 import { updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy } from "./progress.js";
 import { validateQuestionSet, BLANK_TOKEN } from "./validation.js";
 import { confirmDialog, alertDialog, dismissAllDialogs } from "./dialog.js";
+import { t, setLanguage, getLanguage, defaultLanguage, translatePage } from "./i18n.js";
 import {
   buildPool,
   poolStatsByObjective,
@@ -51,6 +54,7 @@ const state = {
   selectedObjectives: new Set(allObjectiveIds()),
   // exam session: { questions, answers:{[_key]: response}, marked:Set, index, timerEnabled, endsAt }
   session: null,
+  lastResult: null, // kept so the results page can be re-rendered in another language
 };
 
 // Module-level so a timer can never outlive the session that started it.
@@ -117,21 +121,21 @@ function renderSetsPanel() {
           },
         }),
         ce("span", {}, `${set.setName}`),
-        ce("span", { class: "badge" }, `${count} q`),
-        set.builtin ? ce("span", { class: "badge badge-muted" }, "built-in") : null,
+        ce("span", { class: "badge" }, t("set.count", { n: count })),
+        set.builtin ? ce("span", { class: "badge badge-muted" }, t("set.builtin")) : null,
       ]),
       !set.builtin
         ? ce("button", {
             class: "btn-link danger",
             onclick: async () => {
-              if (!(await confirmDialog(`Remove set "${set.setName}"?`, { confirmText: "Remove", danger: true }))) return;
+              if (!(await confirmDialog(t("set.removeConfirm", { name: set.setName }), { confirmText: t("set.remove"), danger: true }))) return;
               removeUploadedSet(set.id);
               state.sets = loadUploadedSets();
               state.enabledSetIds.delete(set.id);
               renderSetsPanel();
               refreshPoolCount();
             },
-          }, "Remove")
+          }, t("set.remove"))
         : null,
     ]);
     container.appendChild(row);
@@ -162,7 +166,7 @@ function renderDomainFilters() {
         ce("span", { class: "badge" }, `${domain.weight}%`),
       ]),
     ]);
-    if (someChecked && !allChecked) header.classList.add("partial");
+    if (someChecked && !allChecked) header.querySelector(".domain-check").appendChild(ce("span", { class: "partial-note" }, t("domain.partial")));
     card.appendChild(header);
 
     const objList = ce("div", { class: "objective-list" });
@@ -196,15 +200,15 @@ function renderDomainFilters() {
     const rangeRow = ce("div", { class: "range-row" }, [
       ce("input", {
         type: "text",
-        placeholder: `e.g. ${objIds[0]}-${objIds[Math.max(0, objIds.length - 2)]}`,
+        placeholder: t("range.placeholder", { from: objIds[0], to: objIds[Math.max(0, objIds.length - 2)] }),
         class: "range-input",
         onkeydown: (e) => {
           if (e.key === "Enter") applyFromInput(e.target);
         },
       }),
-      ce("button", { class: "btn-link", onclick: (e) => applyFromInput(e.target.previousElementSibling) }, "Apply range"),
-      ce("button", { class: "btn-link", onclick: () => { objIds.forEach((id) => state.selectedObjectives.add(id)); renderDomainFilters(); refreshPoolCount(); } }, "All"),
-      ce("button", { class: "btn-link", onclick: () => { objIds.forEach((id) => state.selectedObjectives.delete(id)); renderDomainFilters(); refreshPoolCount(); } }, "None"),
+      ce("button", { class: "btn-link", onclick: (e) => applyFromInput(e.target.previousElementSibling) }, t("range.apply")),
+      ce("button", { class: "btn-link", onclick: () => { objIds.forEach((id) => state.selectedObjectives.add(id)); renderDomainFilters(); refreshPoolCount(); } }, t("range.all")),
+      ce("button", { class: "btn-link", onclick: () => { objIds.forEach((id) => state.selectedObjectives.delete(id)); renderDomainFilters(); refreshPoolCount(); } }, t("range.none")),
     ]);
     card.appendChild(rangeRow);
 
@@ -242,7 +246,7 @@ function updateObjectiveCounts() {
   const stats = poolStatsByObjective(pool);
   elAll(".count-badge").forEach((badge) => {
     const objId = badge.dataset.obj;
-    badge.textContent = `${stats[objId] || 0} q`;
+    badge.textContent = t("set.count", { n: stats[objId] || 0 });
   });
 }
 
@@ -317,7 +321,7 @@ function handleFileUpload(file) {
     try {
       raw = JSON.parse(reader.result);
     } catch (e) {
-      showUploadResult({ valid: false, errors: [`Could not parse JSON: ${e.message}`], warnings: [] });
+      showUploadResult({ valid: false, errors: [t("upload.parseError", { msg: e.message })], warnings: [] });
       return;
     }
     showUploadResult(validateQuestionSet(raw, file.name.replace(/\.json$/i, "")));
@@ -332,19 +336,19 @@ function showUploadResult(result) {
   const parsedCount = result.set ? result.set.questions.length : 0;
 
   if (result.valid) {
-    box.appendChild(ce("div", { class: "upload-ok" }, `✓ Parsed ${parsedCount} valid question(s).`));
+    box.appendChild(ce("div", { class: "upload-ok" }, t("upload.ok", { n: parsedCount })));
   } else if (parsedCount > 0) {
     box.appendChild(
-      ce("div", { class: "upload-warn" }, `⚠ ${parsedCount} question(s) parsed OK, but ${result.errors.length} error(s) found. You can still import the valid subset.`)
+      ce("div", { class: "upload-warn" }, t("upload.partial", { n: parsedCount, e: result.errors.length }))
     );
   } else {
-    box.appendChild(ce("div", { class: "upload-error" }, `✗ Import failed — no valid questions found.`));
+    box.appendChild(ce("div", { class: "upload-error" }, t("upload.failed")));
   }
 
   if (result.errors.length) {
     const list = ce("ul", { class: "error-list" });
     result.errors.slice(0, 15).forEach((e) => list.appendChild(ce("li", {}, e)));
-    if (result.errors.length > 15) list.appendChild(ce("li", {}, `...and ${result.errors.length - 15} more.`));
+    if (result.errors.length > 15) list.appendChild(ce("li", {}, t("upload.more", { n: result.errors.length - 15 })));
     box.appendChild(list);
   }
   if (result.warnings.length) {
@@ -360,7 +364,7 @@ function showUploadResult(result) {
         onclick: () => {
           const newSet = { id: `up-${Date.now()}`, setName: result.set.setName, questions: result.set.questions };
           if (!addUploadedSet(newSet)) {
-            alertDialog("Could not save this set: browser storage is full or disabled. Remove an older set and try again.");
+            alertDialog(t("upload.storageFull"));
             return;
           }
           state.sets = loadUploadedSets();
@@ -369,7 +373,7 @@ function showUploadResult(result) {
           refreshPoolCount();
           box.style.display = "none";
         },
-      }, `Import ${parsedCount} question(s) into a new set`)
+      }, t("upload.import", { n: parsedCount }))
     );
   }
 }
@@ -461,8 +465,8 @@ function isRunningInAnotherTab(saved) {
 // Starting a new exam overwrites the saved one, so ask before ending a live exam elsewhere.
 async function confirmTakeOverOtherTab() {
   if (!isRunningInAnotherTab(loadSession())) return true;
-  return confirmDialog("An exam is in progress in another tab. Starting a new one here will end it there.", {
-    confirmText: "Start new exam",
+  return confirmDialog(t("tabs.takeOver"), {
+    confirmText: t("tabs.startNew"),
     danger: true,
   });
 }
@@ -483,7 +487,7 @@ function onSessionStorageChange(e) {
   if (saved.ownerTab === TAB_ID) return;
   endSession({ keepSaved: true });
   showPage("page-setup");
-  alertDialog("This exam was continued in another tab, so it was closed here. Only one tab can run an exam at a time.");
+  alertDialog(t("tabs.closedHere"));
 }
 
 // Offers to restore an exam that was in progress when the page was reloaded or closed.
@@ -492,8 +496,8 @@ async function resumeSavedSession() {
   if (!saved || !Array.isArray(saved.questions) || saved.questions.length === 0) return false;
   if (isRunningInAnotherTab(saved)) {
     const move = await confirmDialog(
-      `An exam is in progress in another tab (question ${saved.index + 1} of ${saved.questions.length}). Continue it here instead? It will close in the other tab.`,
-      { confirmText: "Continue here", cancelText: "Leave it there" }
+      t("tabs.moveHere", { i: saved.index + 1, n: saved.questions.length }),
+      { confirmText: t("tabs.continueHere"), cancelText: t("tabs.leave") }
     );
     if (!move) return false;
     state.session = restoreSession(saved);
@@ -502,11 +506,11 @@ async function resumeSavedSession() {
   }
   const expired = saved.endsAt != null && Date.now() >= saved.endsAt;
   const prompt = expired
-    ? "Your previous timed exam ran out of time while the page was closed. Submit it now and see the results?"
-    : `Resume your unfinished exam (question ${saved.index + 1} of ${saved.questions.length})?`;
+    ? t("resume.expired")
+    : t("resume.ask", { i: saved.index + 1, n: saved.questions.length });
   const ok = await confirmDialog(prompt, {
-    confirmText: expired ? "Submit" : "Resume",
-    cancelText: expired ? "Discard" : "Start over",
+    confirmText: expired ? t("resume.submit") : t("resume.resume"),
+    cancelText: expired ? t("resume.discard") : t("resume.startOver"),
   });
   if (!ok) {
     clearSession();
@@ -545,7 +549,9 @@ function stopTimer() {
   timerId = null;
 }
 
-const PBQ_TYPE_LABELS = {
+const typeLabel = (type) => t(`type.${type}`);
+// Exports are data files, so their type column stays in English regardless of the UI language.
+const EXPORT_TYPE_LABELS = {
   single: "Multiple choice",
   multiple: "Multiple choice (select all that apply)",
   matching: "Performance-based: Matching",
@@ -560,9 +566,9 @@ function renderExam() {
   const q = s.questions[s.index];
   if (!(q._key in s.answers)) s.answers[q._key] = blankResponse(q);
 
-  el("#exam-progress").textContent = `Question ${s.index + 1} of ${s.questions.length}`;
+  el("#exam-progress").textContent = t("exam.progress", { i: s.index + 1, n: s.questions.length });
   el("#exam-timer-wrap").style.display = s.timerEnabled ? "inline-block" : "none";
-  el("#question-domain").textContent = `${q.domain} — ${OBJECTIVE_INDEX[q.domain]?.title || ""} · ${PBQ_TYPE_LABELS[q.type] || ""}`;
+  el("#question-domain").textContent = `${q.domain} — ${OBJECTIVE_INDEX[q.domain]?.title || ""} · ${typeLabel(q.type)}`;
 
   const optionsBox = el("#options-box");
   optionsBox.innerHTML = "";
@@ -601,9 +607,9 @@ function questionResult(q, response, partialCredit) {
 }
 
 function statusLabel({ status, points }) {
-  if (status === "correct") return "✓ Correct";
-  if (status === "partial") return `◐ Partial credit (${Math.round(points * 100)}%)`;
-  return "✗ Incorrect";
+  if (status === "correct") return t("status.correct");
+  if (status === "partial") return t("status.partial", { p: Math.round(points * 100) });
+  return t("status.incorrect");
 }
 
 function renderFeedback(q, s) {
@@ -642,7 +648,7 @@ const QUESTION_RENDERERS = {
   choice(q, s, box) {
     const multiple = q.type === "multiple";
     const limit = q.answer.length;
-    if (multiple) box.appendChild(ce("p", { class: "hint" }, `Select ${limit}.`));
+    if (multiple) box.appendChild(ce("p", { class: "hint" }, t("q.selectN", { n: limit })));
     const selected = new Set(s.answers[q._key] || []);
     const inputs = [];
     // Like the real exam, a "Select N" question accepts at most N choices.
@@ -679,7 +685,7 @@ const QUESTION_RENDERERS = {
     // dragging a card onto one slot): picking an option already used elsewhere moves it.
     const oneToOne = new Set(q.answer).size === q.answer.length;
     box.appendChild(
-      ce("p", { class: "hint" }, `Assign each item on the left to the correct match on the right. ${oneToOne ? "Each option can be used once." : "Options can be used more than once."}`)
+      ce("p", { class: "hint" }, `${t("q.matching.hint")} ${t(oneToOne ? "q.matching.once" : "q.matching.reuse")}`)
     );
     const response = s.answers[q._key] || blankResponse(q);
     q.prompts.forEach((promptText, promptIdx) => {
@@ -693,7 +699,7 @@ const QUESTION_RENDERERS = {
           setAnswer(s, q, next);
           if (movedFrom !== -1 && movedFrom !== promptIdx) renderExam();
         },
-      }, [ce("option", { value: "" }, "-- Select --")]);
+      }, [ce("option", { value: "" }, t("q.select"))]);
       q.displayTargets.forEach((origIdx) => {
         const opt = ce("option", { value: String(origIdx) }, q.targets[origIdx]);
         if (response[promptIdx] === origIdx) opt.setAttribute("selected", "selected");
@@ -704,12 +710,12 @@ const QUESTION_RENDERERS = {
   },
 
   ordering(q, s, box) {
-    box.appendChild(ce("p", { class: "hint" }, "Drag the steps (or use the arrows) into the correct order (top = first)."));
+    box.appendChild(ce("p", { class: "hint" }, t("q.ordering.hint")));
     const order = s.answers[q._key] || blankResponse(q);
     const list = ce("div", { class: "order-list" });
     order.forEach((origIdx, pos) => {
       const row = ce("div", { class: "order-item", "data-orig": String(origIdx) }, [
-        ce("span", { class: "order-handle", title: "Drag to reorder" }, "⠿"),
+        ce("span", { class: "order-handle", title: t("q.ordering.drag") }, "⠿"),
         ce("span", { class: "order-pos" }, String(pos + 1)),
         ce("span", { class: "order-text" }, q.items[origIdx]),
         ce("div", { class: "order-controls" }, [
@@ -771,7 +777,7 @@ const QUESTION_RENDERERS = {
   },
 
   hotspot(q, s, box) {
-    box.appendChild(ce("p", { class: "hint" }, "Click the zone(s) that answer the question."));
+    box.appendChild(ce("p", { class: "hint" }, t("q.hotspot.hint")));
     const selected = new Set(s.answers[q._key] || []);
     const canvas = ce("div", { class: "hotspot-canvas" });
     q.zones.forEach((zone) => {
@@ -805,7 +811,7 @@ const QUESTION_RENDERERS = {
             next[i] = e.target.value || null;
             setAnswer(s, q, next);
           },
-        }, [ce("option", { value: "" }, "-- Select --"), ...row.options.map((opt) => {
+        }, [ce("option", { value: "" }, t("q.select")), ...row.options.map((opt) => {
           const o = ce("option", { value: opt }, opt);
           if (response[i] === opt) o.setAttribute("selected", "selected");
           return o;
@@ -901,7 +907,7 @@ async function finishExam() {
   const unanswered = s.questions.filter((q) => !isAnswered(s, q)).length;
   const timeLeft = s.endsAt == null || Date.now() < s.endsAt;
   if (unanswered > 0 && timeLeft) {
-    const ok = await confirmDialog(`${unanswered} question(s) are unanswered. Submit anyway?`, { confirmText: "Submit" });
+    const ok = await confirmDialog(t("finish.unanswered", { n: unanswered }), { confirmText: t("finish.submit") });
     // The timer may have expired and submitted this session while the dialog was open.
     if (!ok || state.session !== s) return;
   }
@@ -912,6 +918,7 @@ async function finishExam() {
   for (const q of s.questions) if (!isAnswered(s, q)) answers[q._key] = [];
   const result = scoreSession(s.questions, answers, { partialCredit: s.partialCredit !== false });
   recordProgress(s, result);
+  state.lastResult = result;
   endSession();
   showPage("page-results");
   renderResults(result);
@@ -950,7 +957,7 @@ async function startPractice(questions, emptyMessage) {
 function practiceObjective(objId) {
   const fromEnabled = buildPool(enabledSets(), [objId]);
   const pool = fromEnabled.length ? fromEnabled : buildPool(allSets(), [objId]);
-  startPractice(pickQuestions(pool, 10), `There are no questions for objective ${objId} in your question sets.`);
+  startPractice(pickQuestions(pool, 10), t("progress.noObjective", { id: objId }));
 }
 
 function renderProgress() {
@@ -963,23 +970,23 @@ function renderProgress() {
   const actions = el("#review-actions");
   actions.innerHTML = "";
   actions.append(
-    ce("button", { class: "btn primary", id: "review-due-btn", onclick: () => startPractice(due, "Nothing is due for review right now.") }, `Review due questions (${due.length})`),
-    ce("button", { class: "btn", id: "review-missed-btn", onclick: () => startPractice(missed, "No missed questions to retry.") }, `Retry all missed (${missed.length})`)
+    ce("button", { class: "btn primary", id: "review-due-btn", onclick: () => startPractice(due, t("progress.nothingDue")) }, t("progress.reviewDue", { n: due.length })),
+    ce("button", { class: "btn", id: "review-missed-btn", onclick: () => startPractice(missed, t("progress.noMissed")) }, t("progress.retryMissed", { n: missed.length }))
   );
-  if (due.length > MAX_REVIEW) actions.appendChild(ce("span", { class: "hint" }, `Sessions are capped at ${MAX_REVIEW} questions.`));
+  if (due.length > MAX_REVIEW) actions.appendChild(ce("span", { class: "hint" }, t("progress.capped", { n: MAX_REVIEW })));
 
   const history = loadHistory();
   const weak = el("#weak-objectives");
   weak.innerHTML = "";
   const accuracy = objectiveAccuracy(history);
-  if (accuracy.length === 0) weak.appendChild(ce("p", { class: "hint" }, "Finish an exam or practice session to see per-objective accuracy."));
+  if (accuracy.length === 0) weak.appendChild(ce("p", { class: "hint" }, t("progress.noAccuracy")));
   for (const row of accuracy) {
     weak.appendChild(
       ce("div", { class: "breakdown-row weak-row" }, [
         ce("span", { class: "bd-label", title: OBJECTIVE_INDEX[row.id]?.title || "" }, `${row.id} ${OBJECTIVE_INDEX[row.id]?.title || ""}`),
         ce("div", { class: "bd-bar-bg" }, [ce("div", { class: "bd-bar", style: `width:${row.percent}%` })]),
-        ce("span", { class: "bd-num" }, `${row.percent}% of ${row.total}`),
-        ce("button", { class: "btn-link", onclick: () => practiceObjective(row.id) }, "Practice"),
+        ce("span", { class: "bd-num" }, t("progress.accuracy", { p: row.percent, n: row.total })),
+        ce("button", { class: "btn-link", onclick: () => practiceObjective(row.id) }, t("progress.practice")),
       ])
     );
   }
@@ -987,20 +994,20 @@ function renderProgress() {
   const list = el("#attempt-history");
   list.innerHTML = "";
   if (history.length === 0) {
-    list.appendChild(ce("p", { class: "hint" }, "No finished attempts yet."));
+    list.appendChild(ce("p", { class: "hint" }, t("progress.noAttempts")));
   } else {
     const table = ce("table", { class: "history-table" }, [
-      ce("thead", {}, [ce("tr", {}, ["Date", "Mode", "Score", "Scaled", "Result"].map((h) => ce("th", {}, h)))]),
+      ce("thead", {}, [ce("tr", {}, ["date", "mode", "score", "scaled", "result"].map((h) => ce("th", {}, t(`progress.col.${h}`))))]),
     ]);
     const body = ce("tbody");
     for (const a of [...history].reverse().slice(0, 30)) {
       body.appendChild(
         ce("tr", {}, [
           ce("td", {}, new Date(a.finishedAt).toLocaleString()),
-          ce("td", {}, a.mode === "practice" ? "Practice" : "Exam"),
+          ce("td", {}, t(a.mode === "practice" ? "progress.mode.practice" : "progress.mode.exam")),
           ce("td", {}, `${fmtPoints(a.points)} / ${a.total} (${a.percent}%)`),
           ce("td", {}, String(a.scaled)),
-          ce("td", { class: a.passed ? "pass-text" : "fail-text" }, a.passed ? "PASS" : "FAIL"),
+          ce("td", { class: a.passed ? "pass-text" : "fail-text" }, t(a.passed ? "progress.pass" : "progress.fail")),
         ])
       );
     }
@@ -1015,15 +1022,16 @@ const fmtPoints = (n) => String(Math.round(n * 100) / 100);
 
 function renderResults(result) {
   el("#result-score").textContent = `${fmtPoints(result.points)} / ${result.total} (${result.percent}%)`;
-  const partialNote = result.partialCredit && result.points !== result.correctCount
-    ? ` ${result.correctCount} fully correct; the rest is PBQ partial credit.`
-    : "";
-  el("#result-scaled").textContent =
-    `Estimated scaled score: ${result.scaled} / ${EXAM_INFO.scaledScoreRange[1]}, passing ${EXAM_INFO.passingScaledScore}.${partialNote} ` +
-    `CompTIA doesn't publish how raw points convert to the 100–900 scale (it is set per exam form), so this is a ` +
-    `linear estimate: you need about ${passingPercent()}% of the points to reach ${EXAM_INFO.passingScaledScore}.`;
+  const note = result.partialCredit && result.points !== result.correctCount ? t("results.partialNote", { n: result.correctCount }) : "";
+  el("#result-scaled").textContent = t("results.scaled", {
+    scaled: result.scaled,
+    max: EXAM_INFO.scaledScoreRange[1],
+    pass: EXAM_INFO.passingScaledScore,
+    note,
+    pct: passingPercent(),
+  });
   const passBadge = el("#result-pass");
-  passBadge.textContent = result.passed ? "PASS (estimated)" : "FAIL (estimated)";
+  passBadge.textContent = t(result.passed ? "results.pass" : "results.fail");
   passBadge.className = `badge-pass ${result.passed ? "pass" : "fail"}`;
 
   const domainTable = el("#domain-breakdown");
@@ -1164,7 +1172,7 @@ function exportResultsCSV(result) {
       q.id,
       q.domain,
       OBJECTIVE_INDEX[q.domain]?.title || "",
-      PBQ_TYPE_LABELS[q.type] || q.type,
+      EXPORT_TYPE_LABELS[q.type] || q.type,
       q.question,
       describeCorrectAnswer(q),
       describeYourAnswer(q, d.selected),
@@ -1193,7 +1201,7 @@ const REVIEW_BODY_RENDERERS = {
       let cls = "";
       if (isCorrectOpt) cls = "opt-correct";
       if (wasSelected && !isCorrectOpt) cls = "opt-wrong-selected";
-      optList.appendChild(ce("li", { class: cls }, `${wasSelected ? "☑" : "☐"} ${optText}${isCorrectOpt ? " (correct)" : ""}`));
+      optList.appendChild(ce("li", { class: cls }, `${wasSelected ? "☑" : "☐"} ${optText}${isCorrectOpt ? ` ${t("review.correctMark")}` : ""}`));
     });
     return optList;
   },
@@ -1202,10 +1210,10 @@ const REVIEW_BODY_RENDERERS = {
     const list = ce("ul", { class: "review-options" });
     q.prompts.forEach((promptText, i) => {
       const correctTarget = q.targets[q.answer[i]];
-      const yourTarget = selected[i] != null ? q.targets[selected[i]] : "(no answer)";
+      const yourTarget = selected[i] != null ? q.targets[selected[i]] : t("review.noAnswer");
       const ok = selected[i] === q.answer[i];
       list.appendChild(
-        ce("li", { class: ok ? "opt-correct" : "opt-wrong-selected" }, `${promptText} → your answer: ${yourTarget}${ok ? "" : ` (correct: ${correctTarget})`}`)
+        ce("li", { class: ok ? "opt-correct" : "opt-wrong-selected" }, `${promptText} → ${t("review.yourAnswer")}: ${yourTarget}${ok ? "" : ` ${t("review.correctIs", { x: correctTarget })}`}`)
       );
     });
     return list;
@@ -1218,11 +1226,11 @@ const REVIEW_BODY_RENDERERS = {
       const ok = origIdx === pos;
       list.appendChild(ce("li", { class: ok ? "opt-correct" : "opt-wrong-selected" }, q.items[origIdx]));
     });
-    if (order.length === 0) list.appendChild(ce("li", { class: "opt-wrong-selected" }, "(no answer)"));
+    if (order.length === 0) list.appendChild(ce("li", { class: "opt-wrong-selected" }, t("review.noAnswer")));
     if (!(order.length && order.every((v, i) => v === i))) {
       const correctList = ce("ol", { class: "review-options" });
       q.items.forEach((text) => correctList.appendChild(ce("li", { class: "opt-correct" }, text)));
-      return ce("div", {}, [ce("p", { class: "hint" }, "Your order:"), list, ce("p", { class: "hint" }, "Correct order:"), correctList]);
+      return ce("div", {}, [ce("p", { class: "hint" }, t("review.yourOrder")), list, ce("p", { class: "hint" }, t("review.correctOrder")), correctList]);
     }
     return list;
   },
@@ -1233,7 +1241,7 @@ const REVIEW_BODY_RENDERERS = {
       const val = (selected[i] || "").trim();
       const ok = blankMatches(b, val);
       list.appendChild(
-        ce("li", { class: ok ? "opt-correct" : "opt-wrong-selected" }, `Blank ${i + 1}: "${val || "(blank)"}" ${ok ? "" : `(accepted: ${b.accepted.join(", ")})`}`)
+        ce("li", { class: ok ? "opt-correct" : "opt-wrong-selected" }, `${t("review.blank", { i: i + 1 })}: "${val || t("review.empty")}" ${ok ? "" : t("review.accepted", { list: b.accepted.join(", ") })}`)
       );
     });
     return list;
@@ -1247,7 +1255,7 @@ const REVIEW_BODY_RENDERERS = {
       let cls = "";
       if (isCorrectZone) cls = "opt-correct";
       if (wasSelected && !isCorrectZone) cls = "opt-wrong-selected";
-      list.appendChild(ce("li", { class: cls }, `${wasSelected ? "☑" : "☐"} ${zone.label}${isCorrectZone ? " (correct)" : ""}`));
+      list.appendChild(ce("li", { class: cls }, `${wasSelected ? "☑" : "☐"} ${zone.label}${isCorrectZone ? ` ${t("review.correctMark")}` : ""}`));
     });
     return list;
   },
@@ -1258,9 +1266,9 @@ const REVIEW_BODY_RENDERERS = {
       const val = selected[i];
       const ok = rowMatches(row, val);
       const isBox = row.fieldType === "checkbox";
-      const yourText = isBox ? (val ? "Checked" : "Unchecked") : val || "(no answer)";
-      const correctText = isBox ? (row.answer ? "Checked" : "Unchecked") : row.answer;
-      list.appendChild(ce("li", { class: ok ? "opt-correct" : "opt-wrong-selected" }, `${row.label}: ${yourText}${ok ? "" : ` (correct: ${correctText})`}`));
+      const yourText = isBox ? t(val ? "review.checked" : "review.unchecked") : val || t("review.noAnswer");
+      const correctText = isBox ? t(row.answer ? "review.checked" : "review.unchecked") : row.answer;
+      list.appendChild(ce("li", { class: ok ? "opt-correct" : "opt-wrong-selected" }, `${row.label}: ${yourText}${ok ? "" : ` ${t("review.correctIs", { x: correctText })}`}`));
     });
     return list;
   },
@@ -1277,7 +1285,7 @@ function renderReviewDetails(result, onlyIncorrect) {
       const item = ce("div", { class: `review-item ${status}` });
       item.appendChild(ce("div", { class: "review-head" }, [
         ce("span", { class: "obj-code" }, q.domain),
-        ce("span", {}, PBQ_TYPE_LABELS[q.type] || ""),
+        ce("span", {}, typeLabel(q.type)),
         ce("span", {}, statusLabel({ status, points: d.points })),
       ]));
       item.appendChild(ce("div", { class: "review-question" }, q.question));
@@ -1292,7 +1300,7 @@ async function retakeMissed(result) {
   if (!(await confirmTakeOverOtherTab())) return;
   const missed = result.details.filter((d) => !d.correct).map((d) => d.question);
   if (missed.length === 0) {
-    alertDialog("No missed questions — great job!");
+    alertDialog(t("results.noneMissed"));
     return;
   }
   beginSession(prepareSessionQuestions(missed, { shuffleOptions: el("#shuffle-options").checked }), null);
@@ -1305,9 +1313,9 @@ async function retakeMissed(result) {
 async function confirmQuitExam() {
   if (!state.session) return true;
   const s = state.session;
-  const ok = await confirmDialog("Quit this exam attempt without scoring? Progress will be lost.", {
-    confirmText: "Quit exam",
-    cancelText: "Keep going",
+  const ok = await confirmDialog(t("quit.confirm"), {
+    confirmText: t("quit.yes"),
+    cancelText: t("quit.no"),
     danger: true,
   });
   if (!ok || state.session !== s) return false;
@@ -1375,8 +1383,8 @@ function wireExam() {
 
 function wireProgress() {
   el("#clear-progress-btn").addEventListener("click", async () => {
-    const ok = await confirmDialog("Delete your attempt history and spaced-repetition data? This can't be undone.", {
-      confirmText: "Delete",
+    const ok = await confirmDialog(t("progress.clearConfirm"), {
+      confirmText: t("progress.delete"),
       danger: true,
     });
     if (!ok) return;
@@ -1389,13 +1397,33 @@ function wireInstructions() {
   el("#copy-prompt-btn").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(UPLOAD_FORMAT_DOC);
-      el("#copy-prompt-btn").textContent = "Copied!";
-      setTimeout(() => (el("#copy-prompt-btn").textContent = "Copy full instructions + prompt"), 1500);
+      el("#copy-prompt-btn").textContent = t("instr.copied");
+      setTimeout(() => (el("#copy-prompt-btn").textContent = t("instr.copy")), 1500);
     } catch {
-      alertDialog("Could not copy automatically — please select and copy the text manually.");
+      alertDialog(t("instr.copyFailed"));
     }
   });
   el("#download-example-btn").addEventListener("click", downloadExample);
+}
+
+// Re-renders everything that has text in it, for a live language switch.
+function applyLanguage(lang) {
+  setLanguage(lang);
+  el("#lang-select").value = getLanguage();
+  translatePage();
+  renderSetsPanel();
+  renderDomainFilters();
+  refreshPoolCount();
+  if (state.session) renderExam();
+  if (state.lastResult) renderResults(state.lastResult);
+  if (el("#page-progress").classList.contains("active")) renderProgress();
+}
+
+function wireLanguage() {
+  el("#lang-select").addEventListener("change", (e) => {
+    saveLanguage(e.target.value);
+    applyLanguage(e.target.value);
+  });
 }
 
 export function initApp() {
@@ -1406,6 +1434,10 @@ export function initApp() {
   wireExam();
   wireInstructions();
   wireProgress();
+  wireLanguage();
+  setLanguage(loadLanguage() || defaultLanguage());
+  el("#lang-select").value = getLanguage();
+  translatePage();
   renderSetsPanel();
   renderDomainFilters();
   renderInstructions();

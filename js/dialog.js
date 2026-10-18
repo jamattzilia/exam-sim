@@ -1,10 +1,11 @@
 // In-page replacement for confirm()/alert(). Browsers let users tick "don't allow
 // this site to prompt again", after which confirm() silently returns false — that
 // would make it impossible to submit or quit an exam. These never get suppressed.
+import { t } from "./i18n.js";
 
 const open = new Set();
 
-export function showDialog({ message, confirmText = "OK", cancelText = null, danger = false }) {
+export function showDialog({ message, confirmText = t("dialog.ok"), cancelText = null, danger = false }) {
   return new Promise((resolve) => {
     const previousFocus = document.activeElement;
     const backdrop = document.createElement("div");
@@ -70,7 +71,7 @@ export function showDialog({ message, confirmText = "OK", cancelText = null, dan
   });
 }
 
-export function confirmDialog(message, { confirmText = "OK", cancelText = "Cancel", danger = false } = {}) {
+export function confirmDialog(message, { confirmText = t("dialog.ok"), cancelText = t("dialog.cancel"), danger = false } = {}) {
   return showDialog({ message, confirmText, cancelText, danger });
 }
 

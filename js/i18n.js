@@ -1,0 +1,381 @@
+// Interface translations (English / Russian). Exam content — questions, domain and
+// objective titles — stays in English like the real exam, and so do machine-readable
+// things: the upload format, the LLM prompt, validation messages and export columns.
+//
+// Entries are strings with {placeholders}; t(key, params) fills them in.
+
+const STRINGS = {
+  en: {
+    "doc.title": "SY0-701 Exam Simulator",
+    "app.title": 'CompTIA Security+ <span class="accent">SY0-701</span> Exam Simulator',
+    "nav.setup": "Setup",
+    "nav.progress": "Progress",
+    "nav.instructions": "Instructions & Upload Format",
+    "lang.label": "Interface language",
+
+    "setup.sets.title": "1. Question sets",
+    "setup.sets.hint": "Enable one or more sets below to combine them into a single question pool. Upload new sets from the Instructions tab.",
+    "setup.filters.title": "2. Domain & objective filters",
+    "setup.filters.hint":
+      "Check whole domains, or pick individual objectives. Use the range box to quickly select a span, e.g. type <code>1.1-1.3</code> and click Apply to select only 1.1 through 1.3 (excluding 1.4).",
+    "setup.selectAll": "Select all",
+    "setup.selectNone": "Select none",
+    "setup.preset": "Standard full exam preset (90Q / 90min, official weighting)",
+    "setup.options.title": "3. Exam options",
+    "setup.poolWarning": "No questions match the current filters — enable a set or select at least one objective.",
+    "setup.poolCount": "Questions matching current filters:",
+    "setup.start": "Start exam",
+
+    "opt.mode": "Mode",
+    "opt.mode.exam": "Exam — results at the end",
+    "opt.mode.practice": "Practice — check each answer",
+    "opt.num": "Number of questions",
+    "opt.timed": "Timed exam",
+    "opt.minutes": "Time limit (minutes)",
+    "opt.shuffleQ": "Shuffle question order",
+    "opt.shuffleA": "Shuffle answer order",
+    "opt.weighted": "Official domain weighting",
+    "opt.weighted.title": "Split the question count across domains by official SY0-701 weights (12/22/18/28/20%)",
+    "opt.partial": "PBQ partial credit",
+    "opt.partial.title":
+      "Each correctly answered part of a performance-based question (pair, step, blank, zone, row) earns its share of the point. CompTIA does not publish its exact PBQ scoring rules.",
+
+    "set.builtin": "built-in",
+    "set.remove": "Remove",
+    "set.removeConfirm": 'Remove set "{name}"?',
+    "set.count": "{n} q",
+    "domain.partial": "(partial)",
+    "range.placeholder": "e.g. {from}-{to}",
+    "range.apply": "Apply range",
+    "range.all": "All",
+    "range.none": "None",
+
+    "exam.progress": "Question {i} of {n}",
+    "exam.quit": "Quit",
+    "exam.prev": "◀ Previous",
+    "exam.mark": "Mark for review",
+    "exam.check": "Check answer",
+    "exam.next": "Next ▶",
+    "exam.submit": "Submit exam",
+
+    "type.single": "Multiple choice",
+    "type.multiple": "Multiple choice (select all that apply)",
+    "type.matching": "Performance-based: Matching",
+    "type.ordering": "Performance-based: Ordering",
+    "type.fill_blank": "Performance-based: Fill in the blank",
+    "type.hotspot": "Performance-based: Hotspot",
+    "type.simulation": "Performance-based: Simulation",
+
+    "q.selectN": "Select {n}.",
+    "q.select": "-- Select --",
+    "q.matching.hint": "Assign each item on the left to the correct match on the right.",
+    "q.matching.once": "Each option can be used once.",
+    "q.matching.reuse": "Options can be used more than once.",
+    "q.ordering.hint": "Drag the steps (or use the arrows) into the correct order (top = first).",
+    "q.ordering.drag": "Drag to reorder",
+    "q.hotspot.hint": "Click the zone(s) that answer the question.",
+
+    "status.correct": "✓ Correct",
+    "status.partial": "◐ Partial credit ({p}%)",
+    "status.incorrect": "✗ Incorrect",
+
+    "review.correctMark": "(correct)",
+    "review.yourAnswer": "your answer",
+    "review.correctIs": "(correct: {x})",
+    "review.noAnswer": "(no answer)",
+    "review.yourOrder": "Your order:",
+    "review.correctOrder": "Correct order:",
+    "review.blank": "Blank {i}",
+    "review.empty": "(blank)",
+    "review.accepted": "(accepted: {list})",
+    "review.checked": "Checked",
+    "review.unchecked": "Unchecked",
+
+    "results.title": "Results",
+    "results.domains": "Domain breakdown",
+    "results.review": "Review",
+    "results.onlyIncorrect": "Show only incorrect",
+    "results.retake": "Retake missed questions",
+    "results.exportJson": "Export results (JSON)",
+    "results.exportCsv": "Export results (CSV)",
+    "results.back": "Back to setup",
+    "results.pass": "PASS (estimated)",
+    "results.fail": "FAIL (estimated)",
+    "results.partialNote": " {n} fully correct; the rest is PBQ partial credit.",
+    "results.scaled":
+      "Estimated scaled score: {scaled} / {max}, passing {pass}.{note} CompTIA doesn't publish how raw points convert to the 100–900 scale (it is set per exam form), so this is a linear estimate: you need about {pct}% of the points to reach {pass}.",
+    "results.noneMissed": "No missed questions — great job!",
+
+    "upload.parseError": "Could not parse JSON: {msg}",
+    "upload.ok": "✓ Parsed {n} valid question(s).",
+    "upload.partial": "⚠ {n} question(s) parsed OK, but {e} error(s) found. You can still import the valid subset.",
+    "upload.failed": "✗ Import failed — no valid questions found.",
+    "upload.more": "...and {n} more.",
+    "upload.import": "Import {n} question(s) into a new set",
+    "upload.storageFull": "Could not save this set: browser storage is full or disabled. Remove an older set and try again.",
+
+    "dialog.ok": "OK",
+    "dialog.cancel": "Cancel",
+    "finish.unanswered": "{n} question(s) are unanswered. Submit anyway?",
+    "finish.submit": "Submit",
+    "quit.confirm": "Quit this exam attempt without scoring? Progress will be lost.",
+    "quit.yes": "Quit exam",
+    "quit.no": "Keep going",
+    "resume.ask": "Resume your unfinished exam (question {i} of {n})?",
+    "resume.expired": "Your previous timed exam ran out of time while the page was closed. Submit it now and see the results?",
+    "resume.resume": "Resume",
+    "resume.startOver": "Start over",
+    "resume.submit": "Submit",
+    "resume.discard": "Discard",
+    "tabs.moveHere": "An exam is in progress in another tab (question {i} of {n}). Continue it here instead? It will close in the other tab.",
+    "tabs.continueHere": "Continue here",
+    "tabs.leave": "Leave it there",
+    "tabs.takeOver": "An exam is in progress in another tab. Starting a new one here will end it there.",
+    "tabs.startNew": "Start new exam",
+    "tabs.closedHere": "This exam was continued in another tab, so it was closed here. Only one tab can run an exam at a time.",
+
+    "progress.review.title": "Review",
+    "progress.review.hint":
+      "Spaced repetition: a question you miss is due again right away; each correct answer pushes its next review further out (1, 3, 7, then 21 days).",
+    "progress.reviewDue": "Review due questions ({n})",
+    "progress.retryMissed": "Retry all missed ({n})",
+    "progress.nothingDue": "Nothing is due for review right now.",
+    "progress.noMissed": "No missed questions to retry.",
+    "progress.capped": "Sessions are capped at {n} questions.",
+    "progress.weak.title": "Weakest objectives",
+    "progress.weak.hint": "Accuracy per objective across all finished attempts, weakest first.",
+    "progress.noAccuracy": "Finish an exam or practice session to see per-objective accuracy.",
+    "progress.accuracy": "{p}% of {n}",
+    "progress.practice": "Practice",
+    "progress.noObjective": "There are no questions for objective {id} in your question sets.",
+    "progress.history.title": "Attempt history",
+    "progress.noAttempts": "No finished attempts yet.",
+    "progress.col.date": "Date",
+    "progress.col.mode": "Mode",
+    "progress.col.score": "Score",
+    "progress.col.scaled": "Scaled",
+    "progress.col.result": "Result",
+    "progress.mode.exam": "Exam",
+    "progress.mode.practice": "Practice",
+    "progress.pass": "PASS",
+    "progress.fail": "FAIL",
+    "progress.clear": "Clear history and review data",
+    "progress.clearConfirm": "Delete your attempt history and spaced-repetition data? This can't be undone.",
+    "progress.delete": "Delete",
+
+    "instr.upload.title": "Upload a generated question set",
+    "instr.upload.hint":
+      "Choose a JSON file matching the format below. It will be validated before import; you can combine it with other sets on the Setup tab.",
+    "instr.format.title": "Format & LLM prompt",
+    "instr.format.hint":
+      "Use the button below to copy the full format reference plus a ready-to-use prompt you can paste into an LLM (ChatGPT, Claude, etc.) to generate a compatible file.",
+    "instr.copy": "Copy full instructions + prompt",
+    "instr.copied": "Copied!",
+    "instr.copyFailed": "Could not copy automatically — please select and copy the text manually.",
+    "instr.example": "Download example JSON",
+
+    footer: "Educational, unofficial practice tool. Not affiliated with or endorsed by CompTIA. All bundled questions are original.",
+  },
+
+  ru: {
+    "doc.title": "Симулятор экзамена SY0-701",
+    "app.title": 'Симулятор экзамена CompTIA Security+ <span class="accent">SY0-701</span>',
+    "nav.setup": "Настройка",
+    "nav.progress": "Прогресс",
+    "nav.instructions": "Инструкция и формат загрузки",
+    "lang.label": "Язык интерфейса",
+
+    "setup.sets.title": "1. Наборы вопросов",
+    "setup.sets.hint": "Включите один или несколько наборов — они объединятся в общий пул вопросов. Новые наборы загружаются на вкладке «Инструкция».",
+    "setup.filters.title": "2. Фильтр по доменам и объективам",
+    "setup.filters.hint":
+      "Отмечайте домены целиком или отдельные объективы. Поле диапазона позволяет быстро выбрать отрезок: например, введите <code>1.1-1.3</code> и нажмите «Применить» — будут выбраны только 1.1–1.3 (без 1.4).",
+    "setup.selectAll": "Выбрать все",
+    "setup.selectNone": "Снять все",
+    "setup.preset": "Пресет полного экзамена (90 вопросов / 90 мин, официальные веса)",
+    "setup.options.title": "3. Параметры экзамена",
+    "setup.poolWarning": "Под текущие фильтры не подходит ни один вопрос — включите набор или выберите хотя бы один объектив.",
+    "setup.poolCount": "Вопросов под текущие фильтры:",
+    "setup.start": "Начать экзамен",
+
+    "opt.mode": "Режим",
+    "opt.mode.exam": "Экзамен — результаты в конце",
+    "opt.mode.practice": "Тренировка — проверка каждого ответа",
+    "opt.num": "Количество вопросов",
+    "opt.timed": "С таймером",
+    "opt.minutes": "Лимит времени (минут)",
+    "opt.shuffleQ": "Перемешивать вопросы",
+    "opt.shuffleA": "Перемешивать варианты ответов",
+    "opt.weighted": "Официальные веса доменов",
+    "opt.weighted.title": "Распределять вопросы по доменам согласно официальным весам SY0-701 (12/22/18/28/20%)",
+    "opt.partial": "Частичный зачёт за PBQ",
+    "opt.partial.title":
+      "Каждая верно решённая часть PBQ (пара, шаг, пропуск, зона, строка) приносит свою долю балла. Точные правила оценки PBQ CompTIA не публикует.",
+
+    "set.builtin": "встроенный",
+    "set.remove": "Удалить",
+    "set.removeConfirm": "Удалить набор «{name}»?",
+    "set.count": "{n} вопр.",
+    "domain.partial": "(частично)",
+    "range.placeholder": "напр. {from}-{to}",
+    "range.apply": "Применить",
+    "range.all": "Все",
+    "range.none": "Ничего",
+
+    "exam.progress": "Вопрос {i} из {n}",
+    "exam.quit": "Выйти",
+    "exam.prev": "◀ Назад",
+    "exam.mark": "Отметить",
+    "exam.check": "Проверить ответ",
+    "exam.next": "Далее ▶",
+    "exam.submit": "Сдать экзамен",
+
+    "type.single": "Выбор ответа",
+    "type.multiple": "Выбор нескольких ответов",
+    "type.matching": "PBQ: сопоставление",
+    "type.ordering": "PBQ: упорядочивание",
+    "type.fill_blank": "PBQ: заполнение пропуска",
+    "type.hotspot": "PBQ: выбор зоны (hotspot)",
+    "type.simulation": "PBQ: симуляция",
+
+    "q.selectN": "Выберите {n}.",
+    "q.select": "-- Выберите --",
+    "q.matching.hint": "Сопоставьте каждый пункт слева с подходящим вариантом справа.",
+    "q.matching.once": "Каждый вариант можно использовать один раз.",
+    "q.matching.reuse": "Варианты можно использовать повторно.",
+    "q.ordering.hint": "Перетащите шаги (или используйте стрелки) в правильном порядке (сверху — первый).",
+    "q.ordering.drag": "Перетащите, чтобы изменить порядок",
+    "q.hotspot.hint": "Нажмите на зону (зоны), которая отвечает на вопрос.",
+
+    "status.correct": "✓ Верно",
+    "status.partial": "◐ Частично ({p}%)",
+    "status.incorrect": "✗ Неверно",
+
+    "review.correctMark": "(верно)",
+    "review.yourAnswer": "ваш ответ",
+    "review.correctIs": "(верно: {x})",
+    "review.noAnswer": "(нет ответа)",
+    "review.yourOrder": "Ваш порядок:",
+    "review.correctOrder": "Правильный порядок:",
+    "review.blank": "Пропуск {i}",
+    "review.empty": "(пусто)",
+    "review.accepted": "(принимается: {list})",
+    "review.checked": "Отмечено",
+    "review.unchecked": "Не отмечено",
+
+    "results.title": "Результаты",
+    "results.domains": "По доменам",
+    "results.review": "Разбор",
+    "results.onlyIncorrect": "Только ошибки",
+    "results.retake": "Перерешать ошибки",
+    "results.exportJson": "Экспорт результатов (JSON)",
+    "results.exportCsv": "Экспорт результатов (CSV)",
+    "results.back": "К настройкам",
+    "results.pass": "СДАН (оценка)",
+    "results.fail": "НЕ СДАН (оценка)",
+    "results.partialNote": " Полностью верно: {n}; остальное — частичный зачёт за PBQ.",
+    "results.scaled":
+      "Оценка по шкале: {scaled} / {max}, проходной балл {pass}.{note} CompTIA не публикует, как сырые баллы переводятся в шкалу 100–900 (это задаётся для каждого варианта экзамена), поэтому здесь линейная прикидка: для {pass} нужно около {pct}% баллов.",
+    "results.noneMissed": "Ошибок нет — отличная работа!",
+
+    "upload.parseError": "Не удалось разобрать JSON: {msg}",
+    "upload.ok": "✓ Распознано корректных вопросов: {n}.",
+    "upload.partial": "⚠ Корректных вопросов: {n}, ошибок: {e}. Можно импортировать только корректные.",
+    "upload.failed": "✗ Импорт не удался — корректных вопросов нет.",
+    "upload.more": "…и ещё {n}.",
+    "upload.import": "Импортировать в новый набор (вопросов: {n})",
+    "upload.storageFull": "Не удалось сохранить набор: хранилище браузера переполнено или отключено. Удалите старый набор и попробуйте снова.",
+
+    "dialog.ok": "ОК",
+    "dialog.cancel": "Отмена",
+    "finish.unanswered": "Вопросов без ответа: {n}. Всё равно сдать?",
+    "finish.submit": "Сдать",
+    "quit.confirm": "Выйти из экзамена без подсчёта результата? Прогресс будет потерян.",
+    "quit.yes": "Выйти",
+    "quit.no": "Продолжить",
+    "resume.ask": "Продолжить незавершённый экзамен (вопрос {i} из {n})?",
+    "resume.expired": "Время предыдущего экзамена истекло, пока страница была закрыта. Сдать его и посмотреть результаты?",
+    "resume.resume": "Продолжить",
+    "resume.startOver": "Начать заново",
+    "resume.submit": "Сдать",
+    "resume.discard": "Удалить",
+    "tabs.moveHere": "В другой вкладке идёт экзамен (вопрос {i} из {n}). Продолжить его здесь? В другой вкладке он закроется.",
+    "tabs.continueHere": "Продолжить здесь",
+    "tabs.leave": "Оставить там",
+    "tabs.takeOver": "В другой вкладке идёт экзамен. Если начать новый здесь, тот будет закрыт.",
+    "tabs.startNew": "Начать новый",
+    "tabs.closedHere": "Экзамен продолжили в другой вкладке, поэтому здесь он закрыт. Экзамен может идти только в одной вкладке.",
+
+    "progress.review.title": "Повторение",
+    "progress.review.hint":
+      "Интервальное повторение: вопрос с ошибкой нужно повторить сразу; каждый верный ответ отодвигает следующее повторение (1, 3, 7, затем 21 день).",
+    "progress.reviewDue": "Повторить по расписанию ({n})",
+    "progress.retryMissed": "Перерешать все ошибки ({n})",
+    "progress.nothingDue": "Сейчас повторять нечего.",
+    "progress.noMissed": "Ошибок для повторения нет.",
+    "progress.capped": "В одной сессии не больше {n} вопросов.",
+    "progress.weak.title": "Самые слабые объективы",
+    "progress.weak.hint": "Точность по каждому объективу за все завершённые попытки, начиная со слабейших.",
+    "progress.noAccuracy": "Завершите экзамен или тренировку, чтобы увидеть точность по объективам.",
+    "progress.accuracy": "{p}% из {n}",
+    "progress.practice": "Тренировать",
+    "progress.noObjective": "В ваших наборах нет вопросов по объективу {id}.",
+    "progress.history.title": "История попыток",
+    "progress.noAttempts": "Завершённых попыток пока нет.",
+    "progress.col.date": "Дата",
+    "progress.col.mode": "Режим",
+    "progress.col.score": "Баллы",
+    "progress.col.scaled": "Шкала",
+    "progress.col.result": "Итог",
+    "progress.mode.exam": "Экзамен",
+    "progress.mode.practice": "Тренировка",
+    "progress.pass": "СДАН",
+    "progress.fail": "НЕ СДАН",
+    "progress.clear": "Очистить историю и данные повторения",
+    "progress.clearConfirm": "Удалить историю попыток и данные интервального повторения? Это нельзя отменить.",
+    "progress.delete": "Удалить",
+
+    "instr.upload.title": "Загрузка сгенерированного набора вопросов",
+    "instr.upload.hint":
+      "Выберите JSON-файл в формате ниже. Перед импортом он будет проверен; затем его можно объединять с другими наборами на вкладке «Настройка».",
+    "instr.format.title": "Формат и промпт для LLM",
+    "instr.format.hint":
+      "Кнопка ниже копирует полное описание формата и готовый промпт для LLM (ChatGPT, Claude и др.), который сгенерирует совместимый файл. Формат, промпт и сообщения проверки — на английском, как и сами вопросы экзамена.",
+    "instr.copy": "Скопировать инструкцию и промпт",
+    "instr.copied": "Скопировано!",
+    "instr.copyFailed": "Не удалось скопировать автоматически — выделите текст и скопируйте вручную.",
+    "instr.example": "Скачать пример JSON",
+
+    footer: "Неофициальный учебный тренажёр. Не связан с CompTIA и не одобрен ею. Все встроенные вопросы — оригинальные.",
+  },
+};
+
+export const LANGUAGES = Object.keys(STRINGS);
+let current = "en";
+
+export function setLanguage(lang) {
+  current = STRINGS[lang] ? lang : "en";
+  document.documentElement.lang = current;
+}
+
+export const getLanguage = () => current;
+
+export function defaultLanguage() {
+  return (navigator.language || "").toLowerCase().startsWith("ru") ? "ru" : "en";
+}
+
+export function t(key, params = {}) {
+  const text = STRINGS[current][key] ?? STRINGS.en[key] ?? key;
+  return text.replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match));
+}
+
+// Static markup: data-i18n sets text, data-i18n-html sets trusted markup from the
+// dictionaries above (never user content), data-i18n-title sets the tooltip.
+export function translatePage(root = document) {
+  root.querySelectorAll("[data-i18n]").forEach((node) => (node.textContent = t(node.dataset.i18n)));
+  root.querySelectorAll("[data-i18n-html]").forEach((node) => (node.innerHTML = t(node.dataset.i18nHtml)));
+  root.querySelectorAll("[data-i18n-title]").forEach((node) => (node.title = t(node.dataset.i18nTitle)));
+  document.title = t("doc.title");
+}
+
+export const dictionaryKeys = (lang) => Object.keys(STRINGS[lang]);

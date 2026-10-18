@@ -413,3 +413,20 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 #attempt-history { overflow-x: auto; }
 
 .lang-select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font-size: 0.85rem; }
+
+/* Pre-submit review screen */
+.review-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin: 12px 0 4px; }
+.review-cell {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+  background: var(--panel); color: var(--text); cursor: pointer; font-size: 0.8rem; text-align: left;
+}
+.review-cell.answered { border-color: #93c5fd; background: #eff6ff; }
+.review-cell.unanswered { border-color: var(--red); }
+.review-cell.marked { box-shadow: inset 0 0 0 2px var(--amber); }
+.review-cell-mark { color: var(--amber); }
+
+/* Timer and toasts */
+#exam-timer-wrap.low { color: var(--red); font-weight: 700; }
+.toast-region { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 90; width: min(420px, calc(100% - 32px)); }
+.toast { background: #1e293b; color: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); font-size: 0.9rem; }

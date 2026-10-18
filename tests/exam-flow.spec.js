@@ -7,8 +7,7 @@ import {
   submitExam,
   answerSampleCorrectly,
   goToQuestionOfType,
-  modal,
-} from "./helpers.js";
+  modal, clickSubmit } from "./helpers.js";
 
 test.beforeEach(async ({ page }) => openApp(page));
 
@@ -21,7 +20,7 @@ test("all 7 question types score 100% when answered correctly", async ({ page })
   await startExam(page, { n });
   for (let i = 0; i < n; i++) {
     await answerSampleCorrectly(page);
-    await page.click(i < n - 1 ? "#next-btn" : "#finish-btn");
+    await (i < n - 1 ? page.click("#next-btn") : clickSubmit(page));
   }
   await expect(page.locator("#result-score")).toHaveText(/^14 \/ 14 \(100%\)/);
   const review = page.locator("#review-list");
@@ -38,7 +37,7 @@ test("Domain 2 built-in set renders every question and skipping everything score
   await expect(page.locator("#pool-count")).toHaveText("49");
   await startExam(page, { n: 49 });
   for (let i = 0; i < 48; i++) await page.click("#next-btn");
-  await page.click("#finish-btn");
+  await clickSubmit(page);
   await answerModal(page, true);
   await expect(page.locator("#result-score")).toHaveText(/^0 \/ 49/);
   await expect(page.locator(".review-item")).toHaveCount(49);
@@ -64,7 +63,7 @@ test("cancelling navigation away from an exam keeps the exam", async ({ page }) 
 test("untimed exams also warn about unanswered questions", async ({ page }) => {
   await startExam(page, { n: 2 });
   await page.click("#next-btn");
-  await page.click("#finish-btn");
+  await clickSubmit(page);
   await expect(modal(page)).toContainText("unanswered");
 });
 
@@ -79,7 +78,7 @@ test("an ordering question never opened shows the correct order in review", asyn
     await page.click("#quit-exam-btn");
     await answerModal(page, true);
   }
-  await page.click("#finish-btn");
+  await clickSubmit(page);
   await answerModal(page, true);
   const item = page.locator(".review-item", { hasText: "Arrange the incident response" });
   await expect(item).toContainText("Incorrect");

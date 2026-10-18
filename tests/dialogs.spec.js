@@ -1,12 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { openApp, modal, answerModal, startExam } from "./helpers.js";
+import { openApp, modal, answerModal, startExam, clickSubmit } from "./helpers.js";
 
 test.beforeEach(async ({ page }) => openApp(page));
 
 test("submitting with unanswered questions asks in-page, Cancel keeps the exam and the timer", async ({ page }) => {
   await startExam(page, { n: 2, timer: true });
   await page.click("#next-btn");
-  await page.click("#finish-btn");
+  await clickSubmit(page);
   await expect(modal(page)).toContainText("unanswered");
   await answerModal(page, false);
   const t1 = await page.textContent("#exam-timer");
@@ -40,7 +40,7 @@ test("timer running out while 'Submit anyway?' is open submits and closes the di
   await startExam(page, { n: 3, timer: true });
   await page.click("#next-btn");
   await page.click("#next-btn");
-  await page.click("#finish-btn");
+  await clickSubmit(page);
   await expect(modal(page)).toBeVisible();
   await page.clock.fastForward("01:31:00");
   await expect(page.locator("#page-results")).toHaveClass(/active/);

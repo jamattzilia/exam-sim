@@ -421,6 +421,23 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 #attempt-history { overflow-x: auto; }
 
 .lang-select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font-size: 0.85rem; }
+
+/* Pre-submit review screen */
+.review-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin: 12px 0 4px; }
+.review-cell {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+  background: var(--panel); color: var(--text); cursor: pointer; font-size: 0.8rem; text-align: left;
+}
+.review-cell.answered { border-color: #93c5fd; background: #eff6ff; }
+.review-cell.unanswered { border-color: var(--red); }
+.review-cell.marked { box-shadow: inset 0 0 0 2px var(--amber); }
+.review-cell-mark { color: var(--amber); }
+
+/* Timer and toasts */
+#exam-timer-wrap.low { color: var(--red); font-weight: 700; }
+.toast-region { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 90; width: min(420px, calc(100% - 32px)); }
+.toast { background: #1e293b; color: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); font-size: 0.9rem; }
 </style>
 </head>
 <body>
@@ -494,6 +511,10 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
               <input type="checkbox" id="shuffle-options" checked />
             </div>
             <div class="field-row">
+              <label for="pbq-first" data-i18n="opt.pbqFirst" data-i18n-title="opt.pbqFirst.title" title="The real exam usually opens with its performance-based questions">PBQs first</label>
+              <input type="checkbox" id="pbq-first" checked />
+            </div>
+            <div class="field-row">
               <label for="weighted-toggle" data-i18n="opt.weighted" data-i18n-title="opt.weighted.title" title="Split the question count across domains by official SY0-701 weights (12/22/18/28/20%)">Official domain weighting</label>
               <input type="checkbox" id="weighted-toggle" checked />
             </div>
@@ -521,6 +542,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
         <button id="quit-exam-btn" class="btn-link danger" data-i18n="exam.quit">Quit</button>
       </div>
 
+      <div id="question-view">
       <div id="question-palette" class="palette"></div>
 
       <div class="panel question-panel">
@@ -534,7 +556,19 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
         <button id="mark-review-btn" class="btn" data-i18n="exam.mark">Mark for review</button>
         <button id="check-btn" class="btn primary" style="display:none" data-i18n="exam.check">Check answer</button>
         <button id="next-btn" class="btn" data-i18n="exam.next">Next ▶</button>
-        <button id="finish-btn" class="btn primary" style="display:none" data-i18n="exam.submit">Submit exam</button>
+        <button id="finish-btn" class="btn primary" style="display:none" data-i18n="exam.review">Review &amp; submit</button>
+      </div>
+      </div>
+
+      <!-- Shown before submitting, like the real exam's review screen. -->
+      <div id="review-screen" class="panel" hidden>
+        <h2 data-i18n="reviewScreen.title">Review your answers</h2>
+        <p id="review-screen-counts" class="hint"></p>
+        <div id="review-grid" class="review-grid"></div>
+        <div class="exam-nav">
+          <button id="review-return-btn" class="btn" data-i18n="reviewScreen.return">◀ Back to questions</button>
+          <button id="review-submit-btn" class="btn primary" data-i18n="exam.submit">Submit exam</button>
+        </div>
       </div>
     </section>
 
@@ -2585,6 +2619,16 @@ const STRINGS = {
     "exam.check": "Check answer",
     "exam.next": "Next ▶",
     "exam.submit": "Submit exam",
+    "exam.review": "Review & submit",
+    "opt.pbqFirst": "PBQs first",
+    "opt.pbqFirst.title": "The real exam usually opens with its performance-based questions",
+    "reviewScreen.title": "Review your answers",
+    "reviewScreen.return": "◀ Back to questions",
+    "reviewScreen.counts": "Answered: {a} · Unanswered: {u} · Marked for review: {m}. Select a question to go back to it.",
+    "reviewScreen.answered": "Answered",
+    "reviewScreen.unanswered": "Unanswered",
+    "reviewScreen.marked": "Marked",
+    "timer.warning": "{n} minutes left",
 
     "type.single": "Multiple choice",
     "type.multiple": "Multiple choice (select all that apply)",
@@ -2757,6 +2801,16 @@ const STRINGS = {
     "exam.check": "Проверить ответ",
     "exam.next": "Далее ▶",
     "exam.submit": "Сдать экзамен",
+    "exam.review": "Обзор и сдача",
+    "opt.pbqFirst": "Сначала PBQ",
+    "opt.pbqFirst.title": "Реальный экзамен обычно начинается с практических заданий (PBQ)",
+    "reviewScreen.title": "Обзор ответов",
+    "reviewScreen.return": "◀ К вопросам",
+    "reviewScreen.counts": "Отвечено: {a} · Без ответа: {u} · Отмечено: {m}. Выберите вопрос, чтобы вернуться к нему.",
+    "reviewScreen.answered": "Отвечен",
+    "reviewScreen.unanswered": "Без ответа",
+    "reviewScreen.marked": "Отмечен",
+    "timer.warning": "Осталось {n} минут",
 
     "type.single": "Выбор ответа",
     "type.multiple": "Выбор нескольких ответов",
@@ -2994,12 +3048,29 @@ function alertDialog(message) {
   return showDialog({ message });
 }
 
+// Non-blocking notice that fades out on its own (e.g. "10 minutes left").
+function showToast(message, { durationMs = 6000 } = {}) {
+  let region = document.querySelector(".toast-region");
+  if (!region) {
+    region = document.createElement("div");
+    region.className = "toast-region";
+    region.setAttribute("role", "status");
+    region.setAttribute("aria-live", "polite");
+    document.body.appendChild(region);
+  }
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+  region.appendChild(toast);
+  setTimeout(() => toast.remove(), durationMs);
+}
+
 // Closes every open dialog as if cancelled, e.g. when the exam timer runs out
 // while a "Submit anyway?" question is still on screen.
 function dismissAllDialogs() {
   for (const entry of [...open]) entry.finish(false);
 }
-return { showDialog, confirmDialog, alertDialog, dismissAllDialogs };
+return { showDialog, confirmDialog, alertDialog, showToast, dismissAllDialogs };
 })();
 
 // js/examEngine.js
@@ -3599,7 +3670,7 @@ const __mod_js_ui_js = (() => {
   const { loadUploadedSets, addUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, SESSION_KEY, loadLanguage, saveLanguage, loadHistory, saveHistory, loadStats, saveStats, clearProgress } = __mod_js_storage_js;
   const { updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy } = __mod_js_progress_js;
   const { validateQuestionSet, BLANK_TOKEN } = __mod_js_validation_js;
-  const { confirmDialog, alertDialog, dismissAllDialogs } = __mod_js_dialog_js;
+  const { confirmDialog, alertDialog, dismissAllDialogs, showToast } = __mod_js_dialog_js;
   const { t, setLanguage, getLanguage, defaultLanguage, translatePage } = __mod_js_i18n_js;
   const { buildPool, poolStatsByObjective, pickQuestions, pickQuestionsWeighted, prepareSessionQuestions, scoreSession, blankResponse, hasAnyAnswer, blankMatches, rowMatches, passingPercent, isCorrect, partialScore, shuffle } = __mod_js_examEngine_js;
   const { UPLOAD_FORMAT_DOC, UPLOAD_FORMAT_EXAMPLE } = __mod_js_promptTemplate_js;
@@ -3617,6 +3688,7 @@ const state = {
   // exam session: { questions, answers:{[_key]: response}, marked:Set, index, timerEnabled, endsAt }
   session: null,
   lastResult: null, // kept so the results page can be re-rendered in another language
+  reviewing: false, // the pre-submit review screen is showing
 };
 
 // Module-level so a timer can never outlive the session that started it.
@@ -3840,6 +3912,7 @@ function persistSettings() {
     weighted: el("#weighted-toggle").checked,
     partialCredit: el("#partial-toggle").checked,
     mode: el("#mode-select").value,
+    pbqFirst: el("#pbq-first").checked,
   });
 }
 
@@ -3861,6 +3934,7 @@ function applySavedSettings(saved) {
   if (typeof saved.weighted === "boolean") el("#weighted-toggle").checked = saved.weighted;
   if (typeof saved.partialCredit === "boolean") el("#partial-toggle").checked = saved.partialCredit;
   if (saved.mode === "exam" || saved.mode === "practice") el("#mode-select").value = saved.mode;
+  if (typeof saved.pbqFirst === "boolean") el("#pbq-first").checked = saved.pbqFirst;
 }
 
 function applyStandardPreset() {
@@ -3970,9 +4044,12 @@ async function startExam() {
   const timerMinutes = Math.max(1, Number(el("#timer-minutes").value) || 90);
   const pick = el("#weighted-toggle").checked ? pickQuestionsWeighted : pickQuestions;
 
-  const chosen = pick(pool, numQuestions, { shuffleQuestions });
+  let chosen = pick(pool, numQuestions, { shuffleQuestions });
+  if (el("#pbq-first").checked) chosen = [...chosen.filter(isPbq), ...chosen.filter((q) => !isPbq(q))];
   beginSession(prepareSessionQuestions(chosen, { shuffleOptions }), timerEnabled ? Date.now() + timerMinutes * 60000 : null);
 }
+
+const isPbq = (q) => q.type !== "single" && q.type !== "multiple";
 
 function beginSession(questions, endsAt, { mode = el("#mode-select").value } = {}) {
   stopTimer();
@@ -3986,6 +4063,8 @@ function beginSession(questions, endsAt, { mode = el("#mode-select").value } = {
     mode,
     checked: new Set(),
     endsAt,
+    durationMs: endsAt != null ? endsAt - Date.now() : null,
+    warned: [],
   };
   enterExam();
 }
@@ -4017,7 +4096,7 @@ function persistSession({ alive = true } = {}) {
 }
 
 function restoreSession(saved) {
-  return { ...saved, mode: saved.mode || "exam", marked: new Set(saved.marked || []), checked: new Set(saved.checked || []) };
+  return { warned: [], ...saved, mode: saved.mode || "exam", marked: new Set(saved.marked || []), checked: new Set(saved.checked || []) };
 }
 
 function isRunningInAnotherTab(saved) {
@@ -4101,9 +4180,24 @@ function startTimer() {
     const m = String(Math.floor(totalSec / 60)).padStart(2, "0");
     const sec = String(totalSec % 60).padStart(2, "0");
     el("#exam-timer").textContent = `${m}:${sec}`;
+    el("#exam-timer-wrap").classList.toggle("low", msLeft <= 5 * 60000);
+    warnAboutTime(session, msLeft);
   };
   tick();
   if (state.session === session) timerId = setInterval(tick, 1000);
+}
+
+// One heads-up per threshold, and only if the exam was longer than that to begin with.
+const TIME_WARNINGS_MIN = [10, 5];
+function warnAboutTime(session, msLeft) {
+  for (const minutes of TIME_WARNINGS_MIN) {
+    const ms = minutes * 60000;
+    if (msLeft > ms || session.warned.includes(minutes) || (session.durationMs ?? Infinity) <= ms) continue;
+    session.warned.push(...TIME_WARNINGS_MIN.filter((m) => m >= minutes && !session.warned.includes(m)));
+    showToast(t("timer.warning", { n: minutes }));
+    persistSession();
+    break;
+  }
 }
 
 function stopTimer() {
@@ -4130,6 +4224,9 @@ function renderExam() {
 
   el("#exam-progress").textContent = t("exam.progress", { i: s.index + 1, n: s.questions.length });
   el("#exam-timer-wrap").style.display = s.timerEnabled ? "inline-block" : "none";
+  state.reviewing = false;
+  el("#question-view").hidden = false;
+  el("#review-screen").hidden = true;
   el("#question-domain").textContent = `${q.domain} — ${OBJECTIVE_INDEX[q.domain]?.title || ""} · ${typeLabel(q.type)}`;
 
   const optionsBox = el("#options-box");
@@ -4182,6 +4279,41 @@ function renderFeedback(q, s) {
     renderBody(q, result.given),
     q.explanation ? ce("div", { class: "review-explanation" }, q.explanation) : null,
   ]);
+}
+
+// The real exam ends with a review screen listing every question's status.
+function showReviewScreen() {
+  const s = state.session;
+  if (!s) return;
+  state.reviewing = true;
+  el("#question-view").hidden = true;
+  el("#review-screen").hidden = false;
+  const statuses = s.questions.map((q) => ({ answered: isAnswered(s, q), marked: s.marked.has(q._key) }));
+  el("#review-screen-counts").textContent = t("reviewScreen.counts", {
+    a: statuses.filter((x) => x.answered).length,
+    u: statuses.filter((x) => !x.answered).length,
+    m: statuses.filter((x) => x.marked).length,
+  });
+  const grid = el("#review-grid");
+  grid.innerHTML = "";
+  s.questions.forEach((q, i) => {
+    const { answered, marked } = statuses[i];
+    grid.appendChild(
+      ce("button", {
+        type: "button",
+        class: `review-cell ${answered ? "answered" : "unanswered"} ${marked ? "marked" : ""}`,
+        onclick: () => {
+          s.index = i;
+          renderExam();
+        },
+      }, [
+        ce("strong", {}, String(i + 1)),
+        ce("span", {}, t(answered ? "reviewScreen.answered" : "reviewScreen.unanswered")),
+        marked ? ce("span", { class: "review-cell-mark" }, `⚑ ${t("reviewScreen.marked")}`) : null,
+      ])
+    );
+  });
+  window.scrollTo(0, 0);
 }
 
 function checkCurrentAnswer() {
@@ -4908,7 +5040,7 @@ function wireSetup() {
   });
   el("#num-questions").addEventListener("input", refreshPoolCount);
   el("#start-exam-btn").addEventListener("click", startExam);
-  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle", "#partial-toggle", "#mode-select"].forEach((sel) => {
+  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle", "#partial-toggle", "#mode-select", "#pbq-first"].forEach((sel) => {
     el(sel).addEventListener("change", persistSettings);
   });
 
@@ -4936,7 +5068,9 @@ function wireExam() {
     else s.marked.add(q._key);
     renderExam();
   });
-  el("#finish-btn").addEventListener("click", finishExam);
+  el("#finish-btn").addEventListener("click", showReviewScreen);
+  el("#review-return-btn").addEventListener("click", () => renderExam());
+  el("#review-submit-btn").addEventListener("click", finishExam);
   el("#check-btn").addEventListener("click", checkCurrentAnswer);
   el("#quit-exam-btn").addEventListener("click", async () => {
     if (await confirmQuitExam()) showPage("page-setup");
@@ -4976,7 +5110,7 @@ function applyLanguage(lang) {
   renderSetsPanel();
   renderDomainFilters();
   refreshPoolCount();
-  if (state.session) renderExam();
+  if (state.session) (state.reviewing ? showReviewScreen : renderExam)();
   if (state.lastResult) renderResults(state.lastResult);
   if (el("#page-progress").classList.contains("active")) renderProgress();
 }

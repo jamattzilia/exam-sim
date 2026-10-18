@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { dictionaryKeys } from "../js/i18n.js";
-import { openApp, modal, answerModal, startExam, onlyObjectives, goToQuestionOfType } from "./helpers.js";
+import { openApp, modal, answerModal, startExam, onlyObjectives, goToQuestionOfType, clickSubmit } from "./helpers.js";
 
 test("English and Russian dictionaries have the same keys", () => {
   expect(dictionaryKeys("ru").sort()).toEqual(dictionaryKeys("en").sort());
@@ -30,7 +30,7 @@ test("the Russian interface covers setup, exam, dialogs and results", async ({ p
   await expect(modal(page).locator('[data-action="cancel"]')).toHaveText("Продолжить");
   await answerModal(page, false);
   await page.locator(".palette-btn").last().click(); // question order is shuffled
-  await page.click("#finish-btn");
+  await clickSubmit(page);
   await expect(modal(page)).toContainText("Вопросов без ответа");
   await answerModal(page, true);
   await expect(page.locator("#result-pass")).toHaveText("НЕ СДАН (оценка)");

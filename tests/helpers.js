@@ -49,9 +49,15 @@ export async function startExam(page, { n, timer = false, shuffleQuestions } = {
   await expect(page.locator("#page-exam")).toHaveClass(/active/);
 }
 
+// "Review & submit" opens the review screen; its Submit button ends the exam.
+export async function clickSubmit(page) {
+  await page.click("#finish-btn");
+  await page.click("#review-submit-btn");
+}
+
 export async function submitExam(page) {
   await page.locator(".palette-btn").last().click();
-  await page.click("#finish-btn");
+  await clickSubmit(page);
   await acceptModalIfShown(page);
   await expect(page.locator("#page-results")).toHaveClass(/active/);
 }

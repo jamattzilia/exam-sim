@@ -77,6 +77,10 @@
               <input type="checkbox" id="shuffle-options" checked />
             </div>
             <div class="field-row">
+              <label for="pbq-first" data-i18n="opt.pbqFirst" data-i18n-title="opt.pbqFirst.title" title="The real exam usually opens with its performance-based questions">PBQs first</label>
+              <input type="checkbox" id="pbq-first" checked />
+            </div>
+            <div class="field-row">
               <label for="weighted-toggle" data-i18n="opt.weighted" data-i18n-title="opt.weighted.title" title="Split the question count across domains by official SY0-701 weights (12/22/18/28/20%)">Official domain weighting</label>
               <input type="checkbox" id="weighted-toggle" checked />
             </div>
@@ -104,6 +108,7 @@
         <button id="quit-exam-btn" class="btn-link danger" data-i18n="exam.quit">Quit</button>
       </div>
 
+      <div id="question-view">
       <div id="question-palette" class="palette"></div>
 
       <div class="panel question-panel">
@@ -117,7 +122,19 @@
         <button id="mark-review-btn" class="btn" data-i18n="exam.mark">Mark for review</button>
         <button id="check-btn" class="btn primary" style="display:none" data-i18n="exam.check">Check answer</button>
         <button id="next-btn" class="btn" data-i18n="exam.next">Next ▶</button>
-        <button id="finish-btn" class="btn primary" style="display:none" data-i18n="exam.submit">Submit exam</button>
+        <button id="finish-btn" class="btn primary" style="display:none" data-i18n="exam.review">Review &amp; submit</button>
+      </div>
+      </div>
+
+      <!-- Shown before submitting, like the real exam's review screen. -->
+      <div id="review-screen" class="panel" hidden>
+        <h2 data-i18n="reviewScreen.title">Review your answers</h2>
+        <p id="review-screen-counts" class="hint"></p>
+        <div id="review-grid" class="review-grid"></div>
+        <div class="exam-nav">
+          <button id="review-return-btn" class="btn" data-i18n="reviewScreen.return">◀ Back to questions</button>
+          <button id="review-submit-btn" class="btn primary" data-i18n="exam.submit">Submit exam</button>
+        </div>
       </div>
     </section>
 

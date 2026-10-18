@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { answerModal } from "./helpers.js";
+import { answerModal, clickSubmit } from "./helpers.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const singleFile = pathToFileURL(fileURLToPath(new URL("../dist/exam-sim.html", import.meta.url))).href;
@@ -25,7 +25,7 @@ test("the single-file build works when opened straight from disk (file://)", asy
   await page.fill("#num-questions", "49");
   await page.click("#start-exam-btn");
   await page.locator(".palette-btn").last().click();
-  await page.click("#finish-btn");
+  await clickSubmit(page);
   await answerModal(page, true);
   await expect(page.locator("#review-list")).toContainText("GET /search?q=<script>");
 

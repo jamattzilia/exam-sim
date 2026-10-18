@@ -21,7 +21,7 @@ import {
 } from "./storage.js";
 import { updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy } from "./progress.js";
 import { validateQuestionSet, BLANK_TOKEN } from "./validation.js";
-import { confirmDialog, alertDialog, dismissAllDialogs } from "./dialog.js";
+import { confirmDialog, alertDialog, dismissAllDialogs, showToast } from "./dialog.js";
 import { t, setLanguage, getLanguage, defaultLanguage, translatePage } from "./i18n.js";
 import {
   buildPool,
@@ -55,6 +55,7 @@ const state = {
   // exam session: { questions, answers:{[_key]: response}, marked:Set, index, timerEnabled, endsAt }
   session: null,
   lastResult: null, // kept so the results page can be re-rendered in another language
+  reviewing: false, // the pre-submit review screen is showing
 };
 
 // Module-level so a timer can never outlive the session that started it.
@@ -278,6 +279,7 @@ function persistSettings() {
     weighted: el("#weighted-toggle").checked,
     partialCredit: el("#partial-toggle").checked,
     mode: el("#mode-select").value,
+    pbqFirst: el("#pbq-first").checked,
   });
 }
 
@@ -299,6 +301,7 @@ function applySavedSettings(saved) {
   if (typeof saved.weighted === "boolean") el("#weighted-toggle").checked = saved.weighted;
   if (typeof saved.partialCredit === "boolean") el("#partial-toggle").checked = saved.partialCredit;
   if (saved.mode === "exam" || saved.mode === "practice") el("#mode-select").value = saved.mode;
+  if (typeof saved.pbqFirst === "boolean") el("#pbq-first").checked = saved.pbqFirst;
 }
 
 function applyStandardPreset() {
@@ -408,9 +411,12 @@ async function startExam() {
   const timerMinutes = Math.max(1, Number(el("#timer-minutes").value) || 90);
   const pick = el("#weighted-toggle").checked ? pickQuestionsWeighted : pickQuestions;
 
-  const chosen = pick(pool, numQuestions, { shuffleQuestions });
+  let chosen = pick(pool, numQuestions, { shuffleQuestions });
+  if (el("#pbq-first").checked) chosen = [...chosen.filter(isPbq), ...chosen.filter((q) => !isPbq(q))];
   beginSession(prepareSessionQuestions(chosen, { shuffleOptions }), timerEnabled ? Date.now() + timerMinutes * 60000 : null);
 }
+
+const isPbq = (q) => q.type !== "single" && q.type !== "multiple";
 
 function beginSession(questions, endsAt, { mode = el("#mode-select").value } = {}) {
   stopTimer();
@@ -424,6 +430,8 @@ function beginSession(questions, endsAt, { mode = el("#mode-select").value } = {
     mode,
     checked: new Set(),
     endsAt,
+    durationMs: endsAt != null ? endsAt - Date.now() : null,
+    warned: [],
   };
   enterExam();
 }
@@ -455,7 +463,7 @@ function persistSession({ alive = true } = {}) {
 }
 
 function restoreSession(saved) {
-  return { ...saved, mode: saved.mode || "exam", marked: new Set(saved.marked || []), checked: new Set(saved.checked || []) };
+  return { warned: [], ...saved, mode: saved.mode || "exam", marked: new Set(saved.marked || []), checked: new Set(saved.checked || []) };
 }
 
 function isRunningInAnotherTab(saved) {
@@ -539,9 +547,24 @@ function startTimer() {
     const m = String(Math.floor(totalSec / 60)).padStart(2, "0");
     const sec = String(totalSec % 60).padStart(2, "0");
     el("#exam-timer").textContent = `${m}:${sec}`;
+    el("#exam-timer-wrap").classList.toggle("low", msLeft <= 5 * 60000);
+    warnAboutTime(session, msLeft);
   };
   tick();
   if (state.session === session) timerId = setInterval(tick, 1000);
+}
+
+// One heads-up per threshold, and only if the exam was longer than that to begin with.
+const TIME_WARNINGS_MIN = [10, 5];
+function warnAboutTime(session, msLeft) {
+  for (const minutes of TIME_WARNINGS_MIN) {
+    const ms = minutes * 60000;
+    if (msLeft > ms || session.warned.includes(minutes) || (session.durationMs ?? Infinity) <= ms) continue;
+    session.warned.push(...TIME_WARNINGS_MIN.filter((m) => m >= minutes && !session.warned.includes(m)));
+    showToast(t("timer.warning", { n: minutes }));
+    persistSession();
+    break;
+  }
 }
 
 function stopTimer() {
@@ -568,6 +591,9 @@ function renderExam() {
 
   el("#exam-progress").textContent = t("exam.progress", { i: s.index + 1, n: s.questions.length });
   el("#exam-timer-wrap").style.display = s.timerEnabled ? "inline-block" : "none";
+  state.reviewing = false;
+  el("#question-view").hidden = false;
+  el("#review-screen").hidden = true;
   el("#question-domain").textContent = `${q.domain} — ${OBJECTIVE_INDEX[q.domain]?.title || ""} · ${typeLabel(q.type)}`;
 
   const optionsBox = el("#options-box");
@@ -620,6 +646,41 @@ function renderFeedback(q, s) {
     renderBody(q, result.given),
     q.explanation ? ce("div", { class: "review-explanation" }, q.explanation) : null,
   ]);
+}
+
+// The real exam ends with a review screen listing every question's status.
+function showReviewScreen() {
+  const s = state.session;
+  if (!s) return;
+  state.reviewing = true;
+  el("#question-view").hidden = true;
+  el("#review-screen").hidden = false;
+  const statuses = s.questions.map((q) => ({ answered: isAnswered(s, q), marked: s.marked.has(q._key) }));
+  el("#review-screen-counts").textContent = t("reviewScreen.counts", {
+    a: statuses.filter((x) => x.answered).length,
+    u: statuses.filter((x) => !x.answered).length,
+    m: statuses.filter((x) => x.marked).length,
+  });
+  const grid = el("#review-grid");
+  grid.innerHTML = "";
+  s.questions.forEach((q, i) => {
+    const { answered, marked } = statuses[i];
+    grid.appendChild(
+      ce("button", {
+        type: "button",
+        class: `review-cell ${answered ? "answered" : "unanswered"} ${marked ? "marked" : ""}`,
+        onclick: () => {
+          s.index = i;
+          renderExam();
+        },
+      }, [
+        ce("strong", {}, String(i + 1)),
+        ce("span", {}, t(answered ? "reviewScreen.answered" : "reviewScreen.unanswered")),
+        marked ? ce("span", { class: "review-cell-mark" }, `⚑ ${t("reviewScreen.marked")}`) : null,
+      ])
+    );
+  });
+  window.scrollTo(0, 0);
 }
 
 function checkCurrentAnswer() {
@@ -1346,7 +1407,7 @@ function wireSetup() {
   });
   el("#num-questions").addEventListener("input", refreshPoolCount);
   el("#start-exam-btn").addEventListener("click", startExam);
-  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle", "#partial-toggle", "#mode-select"].forEach((sel) => {
+  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle", "#partial-toggle", "#mode-select", "#pbq-first"].forEach((sel) => {
     el(sel).addEventListener("change", persistSettings);
   });
 
@@ -1374,7 +1435,9 @@ function wireExam() {
     else s.marked.add(q._key);
     renderExam();
   });
-  el("#finish-btn").addEventListener("click", finishExam);
+  el("#finish-btn").addEventListener("click", showReviewScreen);
+  el("#review-return-btn").addEventListener("click", () => renderExam());
+  el("#review-submit-btn").addEventListener("click", finishExam);
   el("#check-btn").addEventListener("click", checkCurrentAnswer);
   el("#quit-exam-btn").addEventListener("click", async () => {
     if (await confirmQuitExam()) showPage("page-setup");
@@ -1414,7 +1477,7 @@ function applyLanguage(lang) {
   renderSetsPanel();
   renderDomainFilters();
   refreshPoolCount();
-  if (state.session) renderExam();
+  if (state.session) (state.reviewing ? showReviewScreen : renderExam)();
   if (state.lastResult) renderResults(state.lastResult);
   if (el("#page-progress").classList.contains("active")) renderProgress();
 }

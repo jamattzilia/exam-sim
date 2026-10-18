@@ -79,6 +79,23 @@ export function alertDialog(message) {
   return showDialog({ message });
 }
 
+// Non-blocking notice that fades out on its own (e.g. "10 minutes left").
+export function showToast(message, { durationMs = 6000 } = {}) {
+  let region = document.querySelector(".toast-region");
+  if (!region) {
+    region = document.createElement("div");
+    region.className = "toast-region";
+    region.setAttribute("role", "status");
+    region.setAttribute("aria-live", "polite");
+    document.body.appendChild(region);
+  }
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+  region.appendChild(toast);
+  setTimeout(() => toast.remove(), durationMs);
+}
+
 // Closes every open dialog as if cancelled, e.g. when the exam timer runs out
 // while a "Submit anyway?" question is still on screen.
 export function dismissAllDialogs() {

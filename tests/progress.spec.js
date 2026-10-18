@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { updateStats, isDue, objectiveAccuracy } from "../js/progress.js";
-import { openApp, onlyObjectives, startExam, answerModal } from "./helpers.js";
+import { openApp, onlyObjectives, startExam, answerModal, clickSubmit } from "./helpers.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -38,7 +38,7 @@ test.describe("Progress page", () => {
       const text = await page.textContent("#question-text");
       const pick = text.includes("reverse the change") ? "Impact analysis" : "Approval process"; // first wrong, second right
       await page.locator(".option-row", { hasText: pick }).locator("input").check();
-      await page.click(i === 0 ? "#next-btn" : "#finish-btn");
+      await (i === 0 ? page.click("#next-btn") : clickSubmit(page));
     }
     await expect(page.locator("#page-results")).toHaveClass(/active/);
   }
@@ -64,7 +64,7 @@ test.describe("Progress page", () => {
     await page.click('button.nav-btn[data-page="page-progress"]');
     await page.click("#review-missed-btn");
     await page.locator(".option-row", { hasText: "Backout plan" }).locator("input").check();
-    await page.click("#finish-btn");
+    await clickSubmit(page);
     await page.click('button.nav-btn[data-page="page-progress"]');
     await expect(page.locator("#review-missed-btn")).toHaveText("Retry all missed (0)");
     await expect(page.locator(".history-table tbody tr")).toHaveCount(2);
@@ -74,7 +74,7 @@ test.describe("Progress page", () => {
     await onlyObjectives(page, [[0, "1.3"]]);
     await startExam(page, { n: 2 });
     await page.click("#next-btn");
-    await page.click("#finish-btn");
+    await clickSubmit(page);
     await answerModal(page, true);
     await page.click('button.nav-btn[data-page="page-progress"]');
     await expect(page.locator("#review-missed-btn")).toHaveText("Retry all missed (0)");

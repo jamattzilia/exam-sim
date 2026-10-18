@@ -27,7 +27,8 @@ modules, served as static files.
   firewall rules) — see `js/promptTemplate.js` / the Instructions tab for the
   schema of each type.
 - Setup filters and exam options persist in `localStorage` across reloads,
-  and results can be exported as JSON or CSV.
+  an in-progress exam can be resumed after a reload or closed tab, and
+  results can be exported as JSON or CSV.
 
 ## Running locally
 
@@ -42,6 +43,17 @@ python3 -m http.server 8000
 ```
 
 Any other static server (`npx serve`, `php -S`, etc.) works the same way.
+
+On Windows, `python3` is often only a Microsoft Store stub that exits
+immediately without starting anything. Use one of these instead:
+
+```powershell
+py -m http.server 8000        # Python from python.org
+npx serve -l 8000             # Node.js
+```
+
+or right-click `index.html` → "Open with Live Server" in VS Code (Live
+Server extension).
 
 ## Deploying
 

@@ -76,14 +76,16 @@ const TYPE_VALIDATORS = {
       }
       blanks.push({ accepted });
     }
-    const tokenCount = question.split(BLANK_TOKEN).length - 1;
+    // Generated text often uses 3, 5 or 6 underscores; treat any run of 3+ as one blank.
+    const normalizedQuestion = question.replace(/_{3,}/g, BLANK_TOKEN);
+    const tokenCount = normalizedQuestion.split(BLANK_TOKEN).length - 1;
     if (tokenCount !== blanks.length) {
       return {
         ok: false,
         error: `${where}: "question" must contain exactly ${blanks.length} "${BLANK_TOKEN}" placeholder(s) to match "blanks" (found ${tokenCount}).`,
       };
     }
-    return { ok: true, fields: { type: "fill_blank", blanks } };
+    return { ok: true, fields: { type: "fill_blank", blanks, question: normalizedQuestion } };
   },
 
   hotspot(q, where) {
@@ -108,7 +110,7 @@ const TYPE_VALIDATORS = {
     if (!Array.isArray(q.answer) || q.answer.length === 0 || q.answer.some((a) => !zoneIds.has(a))) {
       return { ok: false, error: `${where}: "answer" must be a non-empty array of zone ids that exist in "zones".` };
     }
-    return { ok: true, fields: { type: "hotspot", zones, answer: q.answer.map(String) } };
+    return { ok: true, fields: { type: "hotspot", zones, answer: [...new Set(q.answer.map(String))] } };
   },
 
   simulation(q, where) {

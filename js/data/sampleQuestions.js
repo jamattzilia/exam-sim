@@ -1,6 +1,6 @@
 // Built-in sample question set for CompTIA Security+ SY0-701.
-// Schema matches docs/QUESTION_FORMAT.md / the upload format described in the app's
-// "Instructions" panel. All content here is original (not sourced from CompTIA material).
+// Schema matches the upload format described in the app's "Instructions" panel
+// (js/promptTemplate.js). All content here is original (not sourced from CompTIA material).
 export const SAMPLE_SET = {
   setName: "Built-in Sample Set (SY0-701)",
   examVersion: "SY0-701",

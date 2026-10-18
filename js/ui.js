@@ -1,12 +1,21 @@
 import { DOMAINS, OBJECTIVE_INDEX, EXAM_INFO, allObjectiveIds } from "./data/objectives.js";
 import { SAMPLE_SET } from "./data/sampleQuestions.js";
-import { loadUploadedSets, addUploadedSet, removeUploadedSet, loadSettings, saveSettings } from "./storage.js";
+import {
+  loadUploadedSets,
+  addUploadedSet,
+  removeUploadedSet,
+  loadSettings,
+  saveSettings,
+  loadSession,
+  saveSession,
+  clearSession,
+} from "./storage.js";
 import { validateQuestionSet, BLANK_TOKEN } from "./validation.js";
 import {
   buildPool,
   poolStatsByObjective,
-  weightedDomainCounts,
   pickQuestions,
+  pickQuestionsWeighted,
   prepareSessionQuestions,
   scoreSession,
   blankResponse,
@@ -20,15 +29,12 @@ const state = {
   sets: [], // { id, setName, questions, builtin? }
   enabledSetIds: new Set(["builtin"]),
   selectedObjectives: new Set(allObjectiveIds()),
-  timerEnabled: true,
-  timerMinutes: 90,
-  numQuestions: 20,
-  shuffleQuestions: true,
-  shuffleOptions: true,
-  // exam session
-  session: null, // { questions, answers:{}, marked:Set, index, endsAt, timerId }
-  lastResult: null,
+  // exam session: { questions, answers:{[_key]: response}, marked:Set, visited:Set, index, timerEnabled, endsAt }
+  session: null,
 };
+
+// Module-level so a timer can never outlive the session that started it.
+let timerId = null;
 
 function el(sel, root = document) {
   return root.querySelector(sel);
@@ -154,21 +160,21 @@ function renderDomainFilters() {
     }
     card.appendChild(objList);
 
+    const applyFromInput = (input) => {
+      applyRange(domain, input.value);
+      renderDomainFilters();
+      refreshPoolCount();
+    };
     const rangeRow = ce("div", { class: "range-row" }, [
       ce("input", {
         type: "text",
         placeholder: `e.g. ${objIds[0]}-${objIds[Math.max(0, objIds.length - 2)]}`,
         class: "range-input",
-      }),
-      ce("button", {
-        class: "btn-link",
-        onclick: (e) => {
-          const input = e.target.previousElementSibling;
-          applyRange(domain, input.value);
-          renderDomainFilters();
-          refreshPoolCount();
+        onkeydown: (e) => {
+          if (e.key === "Enter") applyFromInput(e.target);
         },
-      }, "Apply range"),
+      }),
+      ce("button", { class: "btn-link", onclick: (e) => applyFromInput(e.target.previousElementSibling) }, "Apply range"),
       ce("button", { class: "btn-link", onclick: () => { objIds.forEach((id) => state.selectedObjectives.add(id)); renderDomainFilters(); refreshPoolCount(); } }, "All"),
       ce("button", { class: "btn-link", onclick: () => { objIds.forEach((id) => state.selectedObjectives.delete(id)); renderDomainFilters(); refreshPoolCount(); } }, "None"),
     ]);
@@ -187,7 +193,7 @@ function applyRange(domain, text) {
   const parts = text.split(",").map((s) => s.trim()).filter(Boolean);
   const matched = new Set();
   for (const part of parts) {
-    const rangeMatch = part.match(/^(\d+\.\d+)\s*-\s*(\d+\.\d+)$/);
+    const rangeMatch = part.match(/^(\d+\.\d+)\s*[-–—]\s*(\d+\.\d+)$/);
     if (rangeMatch) {
       const [, startId, endId] = rangeMatch;
       const startIdx = objIds.indexOf(startId);
@@ -237,6 +243,7 @@ function persistSettings() {
     timerMinutes: Number(el("#timer-minutes").value) || 90,
     shuffleQuestions: el("#shuffle-questions").checked,
     shuffleOptions: el("#shuffle-options").checked,
+    weighted: el("#weighted-toggle").checked,
   });
 }
 
@@ -255,17 +262,16 @@ function applySavedSettings(saved) {
   if (typeof saved.timerMinutes === "number" && saved.timerMinutes > 0) el("#timer-minutes").value = saved.timerMinutes;
   if (typeof saved.shuffleQuestions === "boolean") el("#shuffle-questions").checked = saved.shuffleQuestions;
   if (typeof saved.shuffleOptions === "boolean") el("#shuffle-options").checked = saved.shuffleOptions;
+  if (typeof saved.weighted === "boolean") el("#weighted-toggle").checked = saved.weighted;
 }
 
 function applyStandardPreset() {
   allObjectiveIds().forEach((id) => state.selectedObjectives.add(id));
   const total = Math.min(EXAM_INFO.fullExamQuestions, buildPool(enabledSets(), allObjectiveIds()).length);
-  state.numQuestions = total;
-  state.timerEnabled = true;
-  state.timerMinutes = EXAM_INFO.fullExamMinutes;
   el("#num-questions").value = total;
   el("#timer-minutes").value = EXAM_INFO.fullExamMinutes;
   el("#timer-toggle").checked = true;
+  el("#weighted-toggle").checked = true;
   renderDomainFilters();
   refreshPoolCount();
 }
@@ -282,11 +288,7 @@ function handleFileUpload(file) {
       showUploadResult({ valid: false, errors: [`Could not parse JSON: ${e.message}`], warnings: [] });
       return;
     }
-    const result = validateQuestionSet(raw, file.name.replace(/\.json$/i, ""));
-    showUploadResult(result);
-    if (result.set && result.set.questions.length > 0) {
-      window.__pendingImport = result;
-    }
+    showUploadResult(validateQuestionSet(raw, file.name.replace(/\.json$/i, "")));
   };
   reader.readAsText(file);
 }
@@ -324,10 +326,11 @@ function showUploadResult(result) {
       ce("button", {
         class: "btn primary small",
         onclick: () => {
-          const pending = window.__pendingImport;
-          if (!pending || !pending.set) return;
-          const newSet = { id: `up-${Date.now()}`, setName: pending.set.setName, questions: pending.set.questions };
-          addUploadedSet(newSet);
+          const newSet = { id: `up-${Date.now()}`, setName: result.set.setName, questions: result.set.questions };
+          if (!addUploadedSet(newSet)) {
+            alert("Could not save this set: browser storage is full or disabled. Remove an older set and try again.");
+            return;
+          }
           state.sets = loadUploadedSets();
           state.enabledSetIds.add(newSet.id);
           renderSetsPanel();
@@ -367,31 +370,70 @@ function startExam() {
   const shuffleOptions = el("#shuffle-options").checked;
   const timerEnabled = el("#timer-toggle").checked;
   const timerMinutes = Math.max(1, Number(el("#timer-minutes").value) || 90);
+  const pick = el("#weighted-toggle").checked ? pickQuestionsWeighted : pickQuestions;
 
-  const chosen = pickQuestions(pool, numQuestions, { shuffleQuestions });
-  const questions = prepareSessionQuestions(chosen, { shuffleOptions });
+  const chosen = pick(pool, numQuestions, { shuffleQuestions });
+  beginSession(prepareSessionQuestions(chosen, { shuffleOptions }), timerEnabled ? Date.now() + timerMinutes * 60000 : null);
+}
 
+function beginSession(questions, endsAt) {
+  stopTimer();
   state.session = {
     questions,
-    answers: {},
+    answers: Object.fromEntries(questions.map((q) => [q._key, blankResponse(q)])),
     marked: new Set(),
+    visited: new Set(),
     index: 0,
-    timerEnabled,
-    endsAt: timerEnabled ? Date.now() + timerMinutes * 60000 : null,
-    timerId: null,
+    timerEnabled: endsAt != null,
+    endsAt,
   };
+  enterExam();
+}
 
+function enterExam() {
   showPage("page-exam");
   renderExam();
-  if (timerEnabled) startTimer();
+  if (state.session.timerEnabled) startTimer();
+}
+
+function endSession() {
+  stopTimer();
+  clearSession();
+  state.session = null;
+}
+
+function persistSession() {
+  const s = state.session;
+  if (!s) return;
+  saveSession({ ...s, marked: [...s.marked], visited: [...s.visited] });
+}
+
+// Offers to restore an exam that was in progress when the page was reloaded or closed.
+function resumeSavedSession() {
+  const saved = loadSession();
+  if (!saved || !Array.isArray(saved.questions) || saved.questions.length === 0) return false;
+  const expired = saved.endsAt != null && Date.now() >= saved.endsAt;
+  const prompt = expired
+    ? "Your previous timed exam ran out of time while the page was closed. Submit it now and see the results?"
+    : `Resume your unfinished exam (question ${saved.index + 1} of ${saved.questions.length})?`;
+  if (!confirm(prompt)) {
+    clearSession();
+    return false;
+  }
+  state.session = { ...saved, marked: new Set(saved.marked || []), visited: new Set(saved.visited || []) };
+  enterExam();
+  return true;
 }
 
 function startTimer() {
   stopTimer();
+  const session = state.session;
   const tick = () => {
-    const s = state.session;
-    if (!s) return;
-    const msLeft = s.endsAt - Date.now();
+    if (state.session !== session) {
+      stopTimer();
+      return;
+    }
+    const msLeft = session.endsAt - Date.now();
     if (msLeft <= 0) {
       el("#exam-timer").textContent = "00:00";
       finishExam();
@@ -403,10 +445,12 @@ function startTimer() {
     el("#exam-timer").textContent = `${m}:${sec}`;
   };
   tick();
-  state.session.timerId = setInterval(tick, 1000);
+  if (state.session === session) timerId = setInterval(tick, 1000);
 }
+
 function stopTimer() {
-  if (state.session?.timerId) clearInterval(state.session.timerId);
+  if (timerId) clearInterval(timerId);
+  timerId = null;
 }
 
 const PBQ_TYPE_LABELS = {
@@ -422,7 +466,8 @@ const PBQ_TYPE_LABELS = {
 function renderExam() {
   const s = state.session;
   const q = s.questions[s.index];
-  if (!(q.id in s.answers)) s.answers[q.id] = blankResponse(q);
+  if (!(q._key in s.answers)) s.answers[q._key] = blankResponse(q);
+  s.visited.add(q._key);
 
   el("#exam-progress").textContent = `Question ${s.index + 1} of ${s.questions.length}`;
   el("#exam-timer-wrap").style.display = s.timerEnabled ? "inline-block" : "none";
@@ -436,23 +481,34 @@ function renderExam() {
   const renderer = QUESTION_RENDERERS[q.type] || QUESTION_RENDERERS.choice;
   renderer(q, s, optionsBox);
 
-  el("#mark-review-btn").classList.toggle("active", s.marked.has(q.id));
+  el("#mark-review-btn").classList.toggle("active", s.marked.has(q._key));
   el("#prev-btn").disabled = s.index === 0;
   el("#next-btn").style.display = s.index === s.questions.length - 1 ? "none" : "inline-block";
   el("#finish-btn").style.display = s.index === s.questions.length - 1 ? "inline-block" : "none";
 
-  renderPalette();
+  sessionChanged();
 }
 
-function setAnswer(s, q, response) {
-  s.answers[q.id] = response;
+function sessionChanged() {
   renderPalette();
+  persistSession();
+}
+
+// Updates the stored response without re-rendering the question, so text inputs keep focus.
+function setAnswer(s, q, response) {
+  s.answers[q._key] = response;
+  sessionChanged();
+}
+
+function isAnswered(s, q) {
+  return q.type === "ordering" ? s.visited.has(q._key) : hasAnyAnswer(q, s.answers[q._key]);
 }
 
 const QUESTION_RENDERERS = {
   choice(q, s, box) {
     const inputType = q.type === "multiple" ? "checkbox" : "radio";
-    const selected = new Set(s.answers[q.id] || []);
+    if (q.type === "multiple") box.appendChild(ce("p", { class: "hint" }, `Select ${q.answer.length}.`));
+    const selected = new Set(s.answers[q._key] || []);
     q.displayOptions.forEach((origIdx) => {
       const row = ce("label", { class: "option-row" }, [
         ce("input", {
@@ -460,7 +516,7 @@ const QUESTION_RENDERERS = {
           name: "option",
           ...(selected.has(origIdx) ? { checked: "checked" } : {}),
           onchange: (e) => {
-            let sel = new Set(s.answers[q.id] || []);
+            let sel = new Set(s.answers[q._key] || []);
             if (inputType === "radio") sel = new Set([origIdx]);
             else if (e.target.checked) sel.add(origIdx);
             else sel.delete(origIdx);
@@ -475,12 +531,12 @@ const QUESTION_RENDERERS = {
 
   matching(q, s, box) {
     box.appendChild(ce("p", { class: "hint" }, "Assign each item on the left to the correct match on the right."));
-    const response = s.answers[q.id] || blankResponse(q);
+    const response = s.answers[q._key] || blankResponse(q);
     q.prompts.forEach((promptText, promptIdx) => {
       const select = ce("select", {
         onchange: (e) => {
           const val = e.target.value === "" ? null : Number(e.target.value);
-          const next = [...(s.answers[q.id] || blankResponse(q))];
+          const next = [...(s.answers[q._key] || blankResponse(q))];
           next[promptIdx] = val;
           setAnswer(s, q, next);
         },
@@ -496,7 +552,7 @@ const QUESTION_RENDERERS = {
 
   ordering(q, s, box) {
     box.appendChild(ce("p", { class: "hint" }, "Use the arrows to arrange the steps in the correct order (top = first)."));
-    const order = s.answers[q.id] || blankResponse(q);
+    const order = s.answers[q._key] || blankResponse(q);
     const list = ce("div", { class: "order-list" });
     order.forEach((origIdx, pos) => {
       const row = ce("div", { class: "order-item" }, [
@@ -533,7 +589,7 @@ const QUESTION_RENDERERS = {
   },
 
   fill_blank(q, s, box) {
-    const response = s.answers[q.id] || blankResponse(q);
+    const response = s.answers[q._key] || blankResponse(q);
     const parts = q.question.split(BLANK_TOKEN);
     const para = ce("p", { class: "fill-blank-text" });
     parts.forEach((part, i) => {
@@ -545,10 +601,9 @@ const QUESTION_RENDERERS = {
             class: "blank-input",
             value: response[i] || "",
             oninput: (e) => {
-              const next = [...(s.answers[q.id] || blankResponse(q))];
+              const next = [...(s.answers[q._key] || blankResponse(q))];
               next[i] = e.target.value;
-              s.answers[q.id] = next; // no full re-render needed while typing
-              renderPalette();
+              setAnswer(s, q, next);
             },
           })
         );
@@ -559,7 +614,7 @@ const QUESTION_RENDERERS = {
 
   hotspot(q, s, box) {
     box.appendChild(ce("p", { class: "hint" }, "Click the zone(s) that answer the question."));
-    const selected = new Set(s.answers[q.id] || []);
+    const selected = new Set(s.answers[q._key] || []);
     const canvas = ce("div", { class: "hotspot-canvas" });
     q.zones.forEach((zone) => {
       const isSelected = selected.has(zone.id);
@@ -568,7 +623,7 @@ const QUESTION_RENDERERS = {
         class: `hotspot-zone ${isSelected ? "selected" : ""}`,
         style: `left:${zone.x}%; top:${zone.y}%; width:${zone.w}%; height:${zone.h}%;`,
         onclick: () => {
-          const sel = new Set(s.answers[q.id] || []);
+          const sel = new Set(s.answers[q._key] || []);
           if (sel.has(zone.id)) sel.delete(zone.id);
           else sel.add(zone.id);
           setAnswer(s, q, [...sel]);
@@ -581,14 +636,14 @@ const QUESTION_RENDERERS = {
   },
 
   simulation(q, s, box) {
-    const response = s.answers[q.id] || blankResponse(q);
+    const response = s.answers[q._key] || blankResponse(q);
     const table = ce("div", { class: "sim-table" });
     q.rows.forEach((row, i) => {
       let field;
       if (row.fieldType === "select") {
         field = ce("select", {
           onchange: (e) => {
-            const next = [...(s.answers[q.id] || blankResponse(q))];
+            const next = [...(s.answers[q._key] || blankResponse(q))];
             next[i] = e.target.value || null;
             setAnswer(s, q, next);
           },
@@ -602,7 +657,7 @@ const QUESTION_RENDERERS = {
           type: "checkbox",
           ...(response[i] ? { checked: "checked" } : {}),
           onchange: (e) => {
-            const next = [...(s.answers[q.id] || blankResponse(q))];
+            const next = [...(s.answers[q._key] || blankResponse(q))];
             next[i] = e.target.checked;
             setAnswer(s, q, next);
           },
@@ -612,10 +667,9 @@ const QUESTION_RENDERERS = {
           type: "text",
           value: response[i] || "",
           oninput: (e) => {
-            const next = [...(s.answers[q.id] || blankResponse(q))];
+            const next = [...(s.answers[q._key] || blankResponse(q))];
             next[i] = e.target.value;
-            s.answers[q.id] = next;
-            renderPalette();
+            setAnswer(s, q, next);
           },
         });
       }
@@ -630,8 +684,8 @@ function renderPalette() {
   const box = el("#question-palette");
   box.innerHTML = "";
   s.questions.forEach((q, i) => {
-    const answered = hasAnyAnswer(q, s.answers[q.id]);
-    const marked = s.marked.has(q.id);
+    const answered = isAnswered(s, q);
+    const marked = s.marked.has(q._key);
     const btn = ce("button", {
       class: `palette-btn ${answered ? "answered" : ""} ${marked ? "marked" : ""} ${i === s.index ? "current" : ""}`,
       onclick: () => {
@@ -644,15 +698,15 @@ function renderPalette() {
 }
 
 function finishExam() {
-  stopTimer();
   const s = state.session;
-  const unanswered = s.questions.filter((q) => !hasAnyAnswer(q, s.answers[q.id])).length;
-  if (unanswered > 0 && s.endsAt && Date.now() < s.endsAt) {
+  if (!s) return;
+  const unanswered = s.questions.filter((q) => !isAnswered(s, q)).length;
+  const timeLeft = s.endsAt == null || Date.now() < s.endsAt;
+  if (unanswered > 0 && timeLeft) {
     if (!confirm(`${unanswered} question(s) are unanswered. Submit anyway?`)) return;
   }
   const result = scoreSession(s.questions, s.answers);
-  state.lastResult = result;
-  state.session = null;
+  endSession();
   showPage("page-results");
   renderResults(result);
 }
@@ -729,10 +783,8 @@ function describeYourAnswer(q, selected) {
   switch (q.type) {
     case "matching":
       return q.prompts.map((p, i) => `${p} → ${selected[i] != null ? q.targets[selected[i]] : "(no answer)"}`).join(" | ");
-    case "ordering": {
-      const order = selected && selected.length === q.items.length ? selected : q.items.map((_, i) => i);
-      return order.map((idx) => q.items[idx]).join(" → ");
-    }
+    case "ordering":
+      return selected.length === q.items.length ? selected.map((idx) => q.items[idx]).join(" → ") : "(no answer)";
     case "fill_blank":
       return q.blanks.map((b, i) => `Blank ${i + 1}: ${(selected[i] || "").trim() || "(blank)"}`).join(" | ");
     case "hotspot":
@@ -793,7 +845,7 @@ function exportResultsCSV(result) {
       q.domain,
       OBJECTIVE_INDEX[q.domain]?.title || "",
       PBQ_TYPE_LABELS[q.type] || q.type,
-      q.question.replaceAll(BLANK_TOKEN, "____"),
+      q.question,
       describeCorrectAnswer(q),
       describeYourAnswer(q, d.selected),
       d.correct ? "correct" : "incorrect",
@@ -802,7 +854,8 @@ function exportResultsCSV(result) {
   });
   const summaryLine = [`Score`, `${result.correctCount}/${result.total} (${result.percent}%)`, "", "", "", "", "", "", ""];
   const csv = [header, summaryLine, ...rows].map((r) => r.map(csvEscape).join(",")).join("\r\n");
-  downloadFile(`sy0-701-results-${timestampForFilename()}.csv`, csv, "text/csv");
+  // BOM so Excel detects UTF-8 (otherwise "→" and non-Latin text are garbled).
+  downloadFile(`sy0-701-results-${timestampForFilename()}.csv`, "﻿" + csv, "text/csv;charset=utf-8");
 }
 
 const REVIEW_BODY_RENDERERS = {
@@ -834,12 +887,13 @@ const REVIEW_BODY_RENDERERS = {
 
   ordering(q, selected) {
     const list = ce("ol", { class: "review-options" });
-    const order = selected && selected.length === q.items.length ? selected : q.items.map((_, i) => i);
+    const order = selected.length === q.items.length ? selected : [];
     order.forEach((origIdx, pos) => {
       const ok = origIdx === pos;
       list.appendChild(ce("li", { class: ok ? "opt-correct" : "opt-wrong-selected" }, q.items[origIdx]));
     });
-    if (!order.every((v, i) => v === i)) {
+    if (order.length === 0) list.appendChild(ce("li", { class: "opt-wrong-selected" }, "(no answer)"));
+    if (!(order.length && order.every((v, i) => v === i))) {
       const correctList = ce("ol", { class: "review-options" });
       q.items.forEach((text) => correctList.appendChild(ce("li", { class: "opt-correct" }, text)));
       return ce("div", {}, [ce("p", { class: "hint" }, "Your order:"), list, ce("p", { class: "hint" }, "Correct order:"), correctList]);
@@ -909,7 +963,7 @@ function renderReviewDetails(result, onlyIncorrect) {
         ce("span", {}, PBQ_TYPE_LABELS[q.type] || ""),
         ce("span", {}, d.correct ? "✓ Correct" : "✗ Incorrect"),
       ]));
-      item.appendChild(ce("div", { class: "review-question" }, q.question.replaceAll(BLANK_TOKEN, "____")));
+      item.appendChild(ce("div", { class: "review-question" }, q.question));
       const renderBody = REVIEW_BODY_RENDERERS[q.type] || REVIEW_BODY_RENDERERS.choice;
       item.appendChild(renderBody(q, d.selected));
       if (q.explanation) item.appendChild(ce("div", { class: "review-explanation" }, q.explanation));
@@ -923,25 +977,25 @@ function retakeMissed(result) {
     alert("No missed questions — great job!");
     return;
   }
-  const questions = prepareSessionQuestions(missed, { shuffleOptions: true });
-  state.session = {
-    questions,
-    answers: {},
-    marked: new Set(),
-    index: 0,
-    timerEnabled: false,
-    endsAt: null,
-    timerId: null,
-  };
-  showPage("page-exam");
-  renderExam();
+  beginSession(prepareSessionQuestions(missed, { shuffleOptions: el("#shuffle-options").checked }), null);
 }
 
 // --------------------------------------------------------------------- Init
 
+// Leaving the exam page mid-attempt would otherwise leave the timer running in the
+// background and auto-submit later from whatever page the user is on.
+function confirmQuitExam() {
+  if (!state.session) return true;
+  if (!confirm("Quit this exam attempt without scoring? Progress will be lost.")) return false;
+  endSession();
+  return true;
+}
+
 function wireNav() {
   elAll(".nav-btn").forEach((btn) => {
-    btn.addEventListener("click", () => showPage(btn.dataset.page));
+    btn.addEventListener("click", () => {
+      if (confirmQuitExam()) showPage(btn.dataset.page);
+    });
   });
   el("#back-to-setup-btn").addEventListener("click", () => showPage("page-setup"));
 }
@@ -960,7 +1014,7 @@ function wireSetup() {
   });
   el("#num-questions").addEventListener("input", refreshPoolCount);
   el("#start-exam-btn").addEventListener("click", startExam);
-  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options"].forEach((sel) => {
+  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle"].forEach((sel) => {
     el(sel).addEventListener("change", persistSettings);
   });
 
@@ -982,17 +1036,13 @@ function wireExam() {
   el("#mark-review-btn").addEventListener("click", () => {
     const s = state.session;
     const q = s.questions[s.index];
-    if (s.marked.has(q.id)) s.marked.delete(q.id);
-    else s.marked.add(q.id);
+    if (s.marked.has(q._key)) s.marked.delete(q._key);
+    else s.marked.add(q._key);
     renderExam();
   });
   el("#finish-btn").addEventListener("click", finishExam);
   el("#quit-exam-btn").addEventListener("click", () => {
-    if (confirm("Quit this exam attempt without scoring? Progress will be lost.")) {
-      stopTimer();
-      state.session = null;
-      showPage("page-setup");
-    }
+    if (confirmQuitExam()) showPage("page-setup");
   });
 }
 
@@ -1021,4 +1071,5 @@ export function initApp() {
   renderInstructions();
   refreshPoolCount();
   showPage("page-setup");
+  resumeSavedSession();
 }

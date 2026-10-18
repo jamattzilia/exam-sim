@@ -1,4 +1,4 @@
-import { DOMAINS, OBJECTIVE_INDEX, EXAM_INFO } from "./data/objectives.js";
+import { DOMAINS, OBJECTIVE_INDEX, EXAM_INFO, domainOfObjective } from "./data/objectives.js";
 
 export function shuffle(arr) {
   const a = arr.slice();
@@ -11,13 +11,15 @@ export function shuffle(arr) {
 
 // Combine questions from every selected set, tagging each with its origin set name,
 // then keep only questions whose objective code is in `selectedObjectiveIds`.
+// `_key` is unique across sets: question ids are only unique within one file, and
+// generated sets commonly reuse ids like "q1", so answers must not be keyed by `id`.
 export function buildPool(selectedSets, selectedObjectiveIds) {
   const objSet = new Set(selectedObjectiveIds);
   const pool = [];
   for (const set of selectedSets) {
     for (const q of set.questions) {
       if (objSet.has(q.domain)) {
-        pool.push({ ...q, _setName: set.setName, _setId: set.id });
+        pool.push({ ...q, _setName: set.setName, _setId: set.id, _key: `${set.id}::${q.id}` });
       }
     }
   }
@@ -31,18 +33,48 @@ export function poolStatsByObjective(pool) {
   return stats;
 }
 
-// Build the official SY0-701 weighted question count per domain for a given total,
-// used by the "standard full exam" preset.
-export function weightedDomainCounts(total) {
-  const raw = DOMAINS.map((d) => ({ id: d.id, exact: (d.weight / 100) * total }));
-  const floors = raw.map((r) => ({ id: r.id, count: Math.floor(r.exact), rem: r.exact - Math.floor(r.exact) }));
-  let assigned = floors.reduce((s, f) => s + f.count, 0);
-  let remaining = total - assigned;
-  const byRemDesc = [...floors].sort((a, b) => b.rem - a.rem);
-  for (let i = 0; i < remaining; i++) byRemDesc[i % byRemDesc.length].count += 1;
-  const out = {};
-  for (const f of floors) out[f.id] = f.count;
-  return out;
+// Splits `total` across the domains present in the pool in proportion to their
+// official SY0-701 weights (largest-remainder rounding). A domain with fewer
+// questions than its share is capped and the surplus is re-split among the rest.
+export function weightedDomainCounts(availableByDomain, total) {
+  const alloc = {};
+  for (const id of Object.keys(availableByDomain)) alloc[id] = 0;
+  let remaining = Math.min(total, Object.values(availableByDomain).reduce((s, n) => s + n, 0));
+  let active = DOMAINS.filter((d) => availableByDomain[d.id] > 0);
+
+  while (remaining > 0 && active.length > 0) {
+    const totalWeight = active.reduce((s, d) => s + d.weight, 0);
+    const shares = active.map((d) => {
+      const exact = (remaining * d.weight) / totalWeight;
+      const room = availableByDomain[d.id] - alloc[d.id];
+      const given = Math.min(Math.floor(exact), room);
+      alloc[d.id] += given;
+      return { id: d.id, given, rem: exact - Math.floor(exact) };
+    });
+    let left = remaining - shares.reduce((s, x) => s + x.given, 0);
+    for (const sh of shares.sort((a, b) => b.rem - a.rem)) {
+      if (left === 0) break;
+      if (alloc[sh.id] < availableByDomain[sh.id]) {
+        alloc[sh.id]++;
+        left--;
+      }
+    }
+    remaining = left;
+    active = active.filter((d) => alloc[d.id] < availableByDomain[d.id]);
+  }
+  return alloc;
+}
+
+// Like pickQuestions, but first splits the count across domains by official
+// exam weight (12/22/18/28/20%), then balances objectives within each domain.
+export function pickQuestionsWeighted(pool, count, { shuffleQuestions = true } = {}) {
+  if (count >= pool.length) return shuffleQuestions ? shuffle(pool) : pool.slice();
+  const byDomain = {};
+  for (const q of pool) (byDomain[domainOfObjective(q.domain)] ||= []).push(q);
+  const available = Object.fromEntries(Object.entries(byDomain).map(([id, qs]) => [id, qs.length]));
+  const alloc = weightedDomainCounts(available, count);
+  const picked = Object.entries(byDomain).flatMap(([id, qs]) => pickQuestions(qs, alloc[id] || 0, { shuffleQuestions: false }));
+  return shuffleQuestions ? shuffle(picked) : picked;
 }
 
 // Selects `count` questions from `pool`, distributed as evenly as possible across
@@ -124,10 +156,8 @@ export function blankResponse(question) {
   }
 }
 
-// Whether the test-taker has interacted with this question at all (used for the
-// question-palette "answered" indicator). Ordering always has *some* arrangement,
-// so it counts as answered as soon as a session starts, matching how a real PBQ
-// ships with a pre-filled default that must be actively corrected.
+// Whether the response contains any input. Ordering always holds *some* arrangement,
+// so the UI decides "answered" for it by whether the question was ever viewed.
 export function hasAnyAnswer(question, response) {
   if (response == null) return false;
   switch (question.type) {
@@ -137,8 +167,6 @@ export function hasAnyAnswer(question, response) {
       return response.some((v) => (v || "").trim().length > 0);
     case "simulation":
       return response.some((v) => v !== null && v !== undefined && v !== "");
-    case "ordering":
-      return true;
     default:
       return Array.isArray(response) && response.length > 0;
   }
@@ -184,7 +212,7 @@ export function isCorrect(question, response) {
   }
 }
 
-export function scoreSession(questions, answersById) {
+export function scoreSession(questions, answersByKey) {
   const perObjective = {};
   const perDomain = {};
   for (const d of DOMAINS) perDomain[d.id] = { correct: 0, total: 0, name: d.name };
@@ -196,7 +224,7 @@ export function scoreSession(questions, answersById) {
   const details = [];
 
   for (const q of questions) {
-    const selected = answersById[q.id] || [];
+    const selected = answersByKey[q._key] ?? blankResponse(q);
     const correct = isCorrect(q, selected);
     if (correct) correctCount++;
 

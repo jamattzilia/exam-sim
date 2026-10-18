@@ -5,6 +5,7 @@
   "description": "CompTIA Security+ SY0-701 exam simulator (static web app)",
   "scripts": {
     "start": "node scripts/serve.mjs 8000",
+    "build": "node scripts/build.mjs",
     "test": "playwright test"
   },
   "devDependencies": {

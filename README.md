@@ -43,34 +43,39 @@ modules, served as static files.
 
 ## Running locally
 
-Because the app uses ES modules (`import`/`export`), open it through a local
-HTTP server rather than double-clicking `index.html` (browsers block module
-imports from `file://`).
+**Easiest — no server needed:** download `dist/exam-sim.html` and double-click
+it. It is the whole app in one file (styles, scripts and the built-in question
+sets inlined), so it works straight from disk, offline.
+
+**From the sources** (`index.html` + `js/`): the app uses ES modules, which
+browsers refuse to load from `file://`, so serve the folder over HTTP:
 
 ```bash
-cd exam-sim
-python3 -m http.server 8000
-# then open http://localhost:8000
+node scripts/serve.mjs        # Node.js, no dependencies → http://localhost:8000
+# or
+python3 -m http.server 8000   # on Windows: py -m http.server 8000
 ```
-
-Any other static server (`npx serve`, `php -S`, etc.) works the same way.
 
 On Windows, `python3` is often only a Microsoft Store stub that exits
-immediately without starting anything. Use one of these instead:
+immediately without starting anything; use `node scripts/serve.mjs`, `py`, or
+right-click `index.html` → "Open with Live Server" in VS Code.
 
-```powershell
-py -m http.server 8000        # Python from python.org
-npx serve -l 8000             # Node.js
+## Development
+
+```bash
+npm install          # installs @playwright/test
+npm run build        # regenerates dist/exam-sim.html from index.html, css/, js/
+npm test             # Playwright end-to-end tests (needs Chromium: npx playwright install chromium)
 ```
 
-or right-click `index.html` → "Open with Live Server" in VS Code (Live
-Server extension).
+`dist/exam-sim.html` is committed; rebuild it after changing the sources (a
+test fails if it is out of date).
 
 ## Deploying
 
 The app is fully static — deploy the repository as-is to GitHub Pages,
-Netlify, Vercel, S3, or any static host. There is no server-side component
-and no build step.
+Netlify, Vercel, S3, or any static host. There is no server-side component;
+`dist/exam-sim.html` can also be hosted on its own.
 
 ## Uploading your own question sets
 

@@ -29,8 +29,7 @@ test("the Russian interface covers setup, exam, dialogs and results", async ({ p
   await expect(modal(page)).toContainText("Выйти из экзамена");
   await expect(modal(page).locator('[data-action="cancel"]')).toHaveText("Продолжить");
   await answerModal(page, false);
-  await page.click("#next-btn");
-  await page.click("#next-btn");
+  await page.locator(".palette-btn").last().click(); // question order is shuffled
   await page.click("#finish-btn");
   await expect(modal(page)).toContainText("Вопросов без ответа");
   await answerModal(page, true);

@@ -10,6 +10,7 @@ import {
   loadSession,
   saveSession,
   clearSession,
+  SESSION_KEY,
 } from "./storage.js";
 import { validateQuestionSet, BLANK_TOKEN } from "./validation.js";
 import { confirmDialog, alertDialog, dismissAllDialogs } from "./dialog.js";
@@ -45,6 +46,13 @@ const state = {
 
 // Module-level so a timer can never outlive the session that started it.
 let timerId = null;
+
+// Only one tab may run the exam: the saved session records its owner tab and a
+// heartbeat, so another tab can tell a live exam from one left behind by a closed tab.
+const TAB_ID = Math.random().toString(36).slice(2);
+const HEARTBEAT_MS = 3000;
+const STALE_AFTER_MS = 10000;
+let heartbeatId = null;
 
 function el(sel, root = document) {
   return root.querySelector(sel);
@@ -373,7 +381,8 @@ function downloadExample() {
 
 // -------------------------------------------------------------------- Exam
 
-function startExam() {
+async function startExam() {
+  if (!(await confirmTakeOverOtherTab())) return;
   const pool = buildPool(enabledSets(), [...state.selectedObjectives]);
   if (pool.length === 0) return;
 
@@ -406,25 +415,74 @@ function enterExam() {
   showPage("page-exam");
   renderExam();
   if (state.session.timerEnabled) startTimer();
+  clearInterval(heartbeatId);
+  heartbeatId = setInterval(() => persistSession(), HEARTBEAT_MS);
 }
 
-function endSession() {
+// keepSaved: another tab owns the exam now, so its saved copy must not be deleted.
+function endSession({ keepSaved = false } = {}) {
   dismissAllDialogs();
   stopTimer();
-  clearSession();
+  clearInterval(heartbeatId);
+  heartbeatId = null;
+  if (!keepSaved) clearSession();
   state.session = null;
 }
 
-function persistSession() {
+// alive=false marks the exam as no longer running in this tab (page is unloading),
+// so a reload offers a normal resume instead of "in progress in another tab".
+function persistSession({ alive = true } = {}) {
   const s = state.session;
   if (!s) return;
-  saveSession({ ...s, marked: [...s.marked] });
+  saveSession({ ...s, marked: [...s.marked], ownerTab: TAB_ID, heartbeatAt: alive ? Date.now() : 0 });
+}
+
+function isRunningInAnotherTab(saved) {
+  return Boolean(saved?.ownerTab) && saved.ownerTab !== TAB_ID && Date.now() - (saved.heartbeatAt || 0) < STALE_AFTER_MS;
+}
+
+// Starting a new exam overwrites the saved one, so ask before ending a live exam elsewhere.
+async function confirmTakeOverOtherTab() {
+  if (!isRunningInAnotherTab(loadSession())) return true;
+  return confirmDialog("An exam is in progress in another tab. Starting a new one here will end it there.", {
+    confirmText: "Start new exam",
+    danger: true,
+  });
+}
+
+// Another tab resumed or started an exam: stop here without touching its saved copy.
+function onSessionStorageChange(e) {
+  if (e.key !== SESSION_KEY || !state.session) return;
+  let saved = null;
+  try {
+    saved = JSON.parse(e.newValue);
+  } catch {
+    // unreadable value: treat as removed
+  }
+  if (!saved) {
+    persistSession(); // still running here; restore the copy another tab cleared
+    return;
+  }
+  if (saved.ownerTab === TAB_ID) return;
+  endSession({ keepSaved: true });
+  showPage("page-setup");
+  alertDialog("This exam was continued in another tab, so it was closed here. Only one tab can run an exam at a time.");
 }
 
 // Offers to restore an exam that was in progress when the page was reloaded or closed.
 async function resumeSavedSession() {
   const saved = loadSession();
   if (!saved || !Array.isArray(saved.questions) || saved.questions.length === 0) return false;
+  if (isRunningInAnotherTab(saved)) {
+    const move = await confirmDialog(
+      `An exam is in progress in another tab (question ${saved.index + 1} of ${saved.questions.length}). Continue it here instead? It will close in the other tab.`,
+      { confirmText: "Continue here", cancelText: "Leave it there" }
+    );
+    if (!move) return false;
+    state.session = { ...saved, marked: new Set(saved.marked || []) };
+    enterExam();
+    return true;
+  }
   const expired = saved.endsAt != null && Date.now() >= saved.endsAt;
   const prompt = expired
     ? "Your previous timed exam ran out of time while the page was closed. Submit it now and see the results?"
@@ -1053,7 +1111,8 @@ function renderReviewDetails(result, onlyIncorrect) {
     });
 }
 
-function retakeMissed(result) {
+async function retakeMissed(result) {
+  if (!(await confirmTakeOverOtherTab())) return;
   const missed = result.details.filter((d) => !d.correct).map((d) => d.question);
   if (missed.length === 0) {
     alertDialog("No missed questions — great job!");
@@ -1159,5 +1218,7 @@ export function initApp() {
   renderInstructions();
   refreshPoolCount();
   showPage("page-setup");
+  window.addEventListener("storage", onSessionStorageChange);
+  window.addEventListener("pagehide", () => persistSession({ alive: false }));
   resumeSavedSession();
 }

@@ -4,7 +4,7 @@
 // the size limits and request overhead of cookies.
 const SETS_KEY = "examsim.sets.v1";
 const SETTINGS_KEY = "examsim.settings.v1";
-const SESSION_KEY = "examsim.session.v1";
+export const SESSION_KEY = "examsim.session.v1";
 
 function read(key, fallback) {
   try {

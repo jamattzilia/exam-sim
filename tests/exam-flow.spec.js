@@ -130,17 +130,19 @@ test("declining resume discards the saved exam", async ({ page }) => {
   expect(await page.evaluate(() => localStorage.getItem("examsim.session.v1"))).toBeNull();
 });
 
-test("a timed exam that expired while closed is submitted on resume", async ({ page }) => {
+test("a timed exam that expired while closed is submitted on resume", async ({ page, context }) => {
   await startExam(page, { n: 3, timer: true });
-  await page.evaluate(() => {
+  await page.close();
+  const later = await context.newPage();
+  // Simulate the time limit passing while no tab had the app open.
+  await later.addInitScript(() => {
     const s = JSON.parse(localStorage.getItem("examsim.session.v1"));
-    s.endsAt = Date.now() - 1000;
-    localStorage.setItem("examsim.session.v1", JSON.stringify(s));
+    if (s) localStorage.setItem("examsim.session.v1", JSON.stringify({ ...s, endsAt: Date.now() - 1000 }));
   });
-  await page.reload();
-  await expect(modal(page)).toContainText("ran out of time");
-  await answerModal(page, true);
-  await expect(page.locator("#page-results")).toHaveClass(/active/);
+  await openApp(later);
+  await expect(modal(later)).toContainText("ran out of time");
+  await answerModal(later, true);
+  await expect(later.locator("#page-results")).toHaveClass(/active/);
 });
 
 test("objective ranges accept an en dash and Enter", async ({ page }) => {

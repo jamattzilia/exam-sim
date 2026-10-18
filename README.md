@@ -6,40 +6,53 @@ modules, served as static files.
 
 ## Features
 
+**Exam structure and filters**
 - Standardized SY0-701 structure: 5 domains, 28 objectives, official domain
   weights (`js/data/objectives.js`).
-- Filter questions by whole domain, individual objectives, or a range within
-  a domain (e.g. type `1.1-1.3` to select those objectives and exclude `1.4`).
-- Take an exam on a single domain, several domains, or a custom cross-domain
-  mix of objectives.
-- Two built-in question sets: a small sample set across all five domains, and
-  an exam-style set of 49 scenario questions (incl. PBQs) for objectives
-  2.1–2.3 (`js/data/domain2Set.js`), switchable in the "Question sets" panel.
-- Combine multiple question sets (the built-in sets plus any number of
-  uploaded sets) into one pool for a single exam session.
-- Upload your own LLM-generated question sets as JSON, with schema
-  validation and an in-app prompt template for generating compatible files
-  (Instructions tab).
-- Timed or untimed mode, question/answer shuffling, a "standard full exam"
-  preset (90 questions / 90 minutes, official domain weighting), a question
-  palette (jump/mark for review), per-domain score breakdown, and a
-  "retake missed questions" flow.
-- Performance-based questions (PBQs), not just multiple choice: matching,
-  ordering/sequencing, fill-in-the-blank, hotspot (click the correct zone of
-  an abstract diagram), and simulation (configure a table of settings, e.g.
-  firewall rules) — see `js/promptTemplate.js` / the Instructions tab for the
-  schema of each type.
-- Ordering PBQs can be reordered by dragging (mouse, or the ⠿ handle on
-  touch screens) or with the ▲/▼ buttons.
-- Optional PBQ partial credit: each correct part of a PBQ (pair, step,
-  blank, zone, row) earns its share of the question's point. CompTIA does not
-  publish its PBQ scoring rules or its raw-to-scaled conversion, so the
-  100–900 score shown is a clearly labeled linear estimate.
-- Setup filters and exam options persist in `localStorage` across reloads,
-  an in-progress exam can be resumed after a reload or closed tab, and
-  results can be exported as JSON or CSV. The CSV separator follows the
-  browser's regional format (`;` where the decimal mark is a comma, e.g.
-  Russian), so Excel opens it in proper columns.
+- Filter by whole domain, individual objectives, or a range within a domain
+  (e.g. `1.1-1.3` selects those objectives and excludes `1.4`).
+- Optional official domain weighting (12/22/18/28/20%) when picking questions,
+  and a "standard full exam" preset (90 questions / 90 minutes).
+
+**Question sets**
+- Two built-in sets: a small sample across all five domains, and 49
+  exam-style questions (incl. PBQs) for objectives 2.1–2.3.
+- Upload LLM-generated sets as JSON, validated on import; the Instructions
+  tab has the full format and a ready-to-paste prompt.
+- Combine sets into one pool (duplicate questions across sets are used once),
+  save the combination as a new set, rename sets, and export any set in the
+  upload format.
+
+**Question types**
+- Multiple choice (single and "Select N") plus five performance-based types:
+  matching, ordering (drag or ▲/▼), fill-in-the-blank, hotspot (click a zone
+  of an abstract diagram) and simulation (configure a table of settings).
+- Optional PBQ partial credit per correct part. CompTIA doesn't publish its
+  PBQ scoring or raw-to-scaled conversion, so the 100–900 score is a clearly
+  labeled linear estimate.
+
+**Taking the exam**
+- Exam mode (results at the end) or practice mode (check each answer and see
+  the explanation right away).
+- Like the real exam: PBQs first, a review screen listing answered /
+  unanswered / marked questions before submitting, and timer warnings at 10
+  and 5 minutes.
+- Question palette, mark for review, keyboard shortcuts (1–9, ←/→, M, C).
+- An in-progress exam survives a reload or closed tab; only one tab can run
+  an exam at a time.
+
+**After the exam**
+- Per-domain breakdown, full review with explanations, retake missed
+  questions, export results as JSON or CSV (separator follows the regional
+  format, so Excel opens it in columns).
+- Progress tab: attempt history, weakest objectives with one-click practice,
+  and spaced repetition of missed questions (review again after 1, 3, 7 and
+  21 days).
+
+**Interface**
+- English and Russian interface (questions stay in English, like the exam),
+  light / dark / system theme, works on phones.
+- Everything is stored in the browser's `localStorage`; no account, no server.
 
 ## Running locally
 

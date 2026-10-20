@@ -26,7 +26,7 @@ jobs:
       - name: Install Chromium for Playwright
         run: npx playwright install --with-deps chromium
 
-      - name: Check dist/exam-sim.html matches the sources
+      - name: Check dist/exam-sim.html and sw.js match the sources
         run: node scripts/build.mjs --check
 
       - name: Run tests

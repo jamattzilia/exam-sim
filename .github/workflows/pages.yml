@@ -36,7 +36,7 @@ jobs:
       - name: Assemble the static site
         run: |
           mkdir -p _site
-          cp -r index.html css js dist _site/
+          cp -r index.html sw.js manifest.webmanifest css js icons dist _site/
           touch _site/.nojekyll
 
       - uses: actions/configure-pages@v5

@@ -50,6 +50,8 @@ modules, served as static files.
   21 days).
 
 **Interface**
+- Installable as an app from the hosted site (Add to Home Screen / Install),
+  and works offline after the first visit.
 - English and Russian interface (questions stay in English, like the exam),
   light / dark / system theme, works on phones.
 - Everything is stored in the browser's `localStorage`; no account, no server.
@@ -77,12 +79,14 @@ right-click `index.html` → "Open with Live Server" in VS Code.
 
 ```bash
 npm install          # installs @playwright/test
-npm run build        # regenerates dist/exam-sim.html from index.html, css/, js/
+npm run build        # regenerates dist/exam-sim.html and sw.js from index.html, css/, js/
 npm test             # Playwright end-to-end tests (needs Chromium: npx playwright install chromium)
 ```
 
-`dist/exam-sim.html` is committed; rebuild it after changing the sources (a
-test fails if it is out of date).
+`dist/exam-sim.html` and `sw.js` (the offline cache, versioned by a hash of the
+site's files) are committed; rebuild them after changing the sources (a test
+and CI fail if they are out of date). App icons are rendered from
+`icons/icon.svg` with `node scripts/make-icons.mjs`.
 
 ## Continuous integration
 

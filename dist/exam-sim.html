@@ -5,6 +5,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SY0-701 Exam Simulator</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20512%20512%22%3E%0A%20%20%0A%20%20%3Crect%20width%3D%22512%22%20height%3D%22512%22%20fill%3D%22%232563eb%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M256%20104%20L376%20150%20V246%20C376%20326%20324%20386%20256%20410%20C188%20386%20136%20326%20136%20246%20V150%20Z%22%0A%20%20%20%20%20%20%20%20fill%3D%22%23ffffff%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M206%20258%20L244%20296%20L312%20220%22%20fill%3D%22none%22%20stroke%3D%22%232563eb%22%20stroke-width%3D%2230%22%0A%20%20%20%20%20%20%20%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E" />
+  <meta name="theme-color" content="#2563eb" />
   <style>
 :root {
   color-scheme: light;
@@ -3000,6 +3002,7 @@ const STRINGS = {
     "edit.save": "Save",
     "edit.invalid": "This question isn't valid:\n{errors}",
     "edit.saved": "Question updated.",
+    "pwa.updated": "A new version has been installed. Reload the page to use it.",
     "backup.title": "Backup",
     "backup.hint": "One file with your uploaded sets, attempt history, review data and settings — to keep it safe or move it to another device or browser.",
     "backup.download": "Download backup",
@@ -3230,6 +3233,7 @@ const STRINGS = {
     "edit.save": "Сохранить",
     "edit.invalid": "Вопрос некорректен:\n{errors}",
     "edit.saved": "Вопрос обновлён.",
+    "pwa.updated": "Установлена новая версия. Перезагрузите страницу, чтобы ей пользоваться.",
     "backup.title": "Резервная копия",
     "backup.hint": "Один файл с загруженными наборами, историей попыток, данными повторения и настройками — чтобы не потерять их или перенести на другое устройство или в другой браузер.",
     "backup.download": "Скачать резервную копию",
@@ -5894,6 +5898,26 @@ function wireLanguage() {
   });
 }
 
+// Offline support and "install app" for the hosted multi-file site. Skipped on file://
+// and in the single-file build, which has no manifest link (and no sw.js beside it).
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator) || !location.protocol.startsWith("http") || !document.querySelector('link[rel="manifest"]')) return;
+  const hadController = Boolean(navigator.serviceWorker.controller); // false on the very first visit
+  navigator.serviceWorker
+    .register("sw.js")
+    .then((registration) => {
+      registration.addEventListener("updatefound", () => {
+        const worker = registration.installing;
+        worker?.addEventListener("statechange", () => {
+          if (worker.state === "activated" && hadController) showToast(t("pwa.updated"), { durationMs: 10000 });
+        });
+      });
+    })
+    .catch(() => {
+      // offline support is optional; the app works without it
+    });
+}
+
 function initApp() {
   state.sets = loadUploadedSets();
   migrateStatsKeys();
@@ -5916,6 +5940,7 @@ function initApp() {
   showPage("page-setup");
   window.addEventListener("storage", onSessionStorageChange);
   window.addEventListener("pagehide", () => persistSession({ alive: false }));
+  registerServiceWorker();
   resumeSavedSession();
 }
 return { initApp };

@@ -1841,6 +1841,26 @@ function wireLanguage() {
   });
 }
 
+// Offline support and "install app" for the hosted multi-file site. Skipped on file://
+// and in the single-file build, which has no manifest link (and no sw.js beside it).
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator) || !location.protocol.startsWith("http") || !document.querySelector('link[rel="manifest"]')) return;
+  const hadController = Boolean(navigator.serviceWorker.controller); // false on the very first visit
+  navigator.serviceWorker
+    .register("sw.js")
+    .then((registration) => {
+      registration.addEventListener("updatefound", () => {
+        const worker = registration.installing;
+        worker?.addEventListener("statechange", () => {
+          if (worker.state === "activated" && hadController) showToast(t("pwa.updated"), { durationMs: 10000 });
+        });
+      });
+    })
+    .catch(() => {
+      // offline support is optional; the app works without it
+    });
+}
+
 export function initApp() {
   state.sets = loadUploadedSets();
   migrateStatsKeys();
@@ -1863,5 +1883,6 @@ export function initApp() {
   showPage("page-setup");
   window.addEventListener("storage", onSessionStorageChange);
   window.addEventListener("pagehide", () => persistSession({ alive: false }));
+  registerServiceWorker();
   resumeSavedSession();
 }

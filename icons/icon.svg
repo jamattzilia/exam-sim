@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Full-bleed background so the same artwork works as a maskable icon;
+       the shield stays inside the central safe zone. -->
+  <rect width="512" height="512" fill="#2563eb"/>
+  <path d="M256 104 L376 150 V246 C376 326 324 386 256 410 C188 386 136 326 136 246 V150 Z"
+        fill="#ffffff"/>
+  <path d="M206 258 L244 296 L312 220" fill="none" stroke="#2563eb" stroke-width="30"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

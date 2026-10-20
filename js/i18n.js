@@ -138,6 +138,8 @@ const STRINGS = {
     "upload.failed": "✗ Import failed — no valid questions found.",
     "upload.more": "...and {n} more.",
     "upload.import": "Import {n} question(s) into a new set",
+    "storage.sessionNotSaved": "This exam can't be saved in this browser (storage is full or disabled). Don't reload or close the tab, or the exam will be lost.",
+    "storage.progressNotSaved": "Your result couldn't be saved to Progress: browser storage is full or disabled. Export it if you want to keep it.",
     "upload.storageFull": "Could not save this set: browser storage is full or disabled. Remove an older set and try again.",
 
     "dialog.ok": "OK",
@@ -336,6 +338,8 @@ const STRINGS = {
     "upload.failed": "✗ Импорт не удался — корректных вопросов нет.",
     "upload.more": "…и ещё {n}.",
     "upload.import": "Импортировать в новый набор (вопросов: {n})",
+    "storage.sessionNotSaved": "Экзамен не удаётся сохранить в этом браузере (хранилище переполнено или отключено). Не перезагружайте и не закрывайте вкладку, иначе экзамен пропадёт.",
+    "storage.progressNotSaved": "Результат не удалось сохранить в «Прогресс»: хранилище браузера переполнено или отключено. Экспортируйте его, если хотите сохранить.",
     "upload.storageFull": "Не удалось сохранить набор: хранилище браузера переполнено или отключено. Удалите старый набор и попробуйте снова.",
 
     "dialog.ok": "ОК",

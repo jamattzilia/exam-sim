@@ -500,3 +500,4 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .shortcuts-hint { margin-top: 10px; font-size: 0.78rem; }
 @media (hover: none) { .shortcuts-hint { display: none; } }
 .field-note { color: var(--text-muted); font-size: 0.8em; }
+.save-warning { background: var(--bad-bg); color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; font-weight: 600; font-size: 0.9rem; }

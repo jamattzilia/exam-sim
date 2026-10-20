@@ -508,6 +508,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .shortcuts-hint { margin-top: 10px; font-size: 0.78rem; }
 @media (hover: none) { .shortcuts-hint { display: none; } }
 .field-note { color: var(--text-muted); font-size: 0.8em; }
+.save-warning { background: var(--bad-bg); color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; font-weight: 600; font-size: 0.9rem; }
 </style>
   <!-- Apply a saved theme before first paint so a dark-theme user doesn't see a light flash. -->
   <script>
@@ -627,6 +628,10 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
         <span id="exam-timer-wrap">⏱ <span id="exam-timer"></span></span>
         <button id="quit-exam-btn" class="btn-link danger" data-i18n="exam.quit">Quit</button>
       </div>
+
+      <p id="save-warning" class="save-warning" role="alert" hidden data-i18n="storage.sessionNotSaved">
+        This exam can't be saved in this browser (storage is full or disabled). Don't reload or close the tab, or the exam will be lost.
+      </p>
 
       <div id="question-view">
       <div id="question-palette" class="palette"></div>
@@ -2303,7 +2308,7 @@ function loadSession() {
 }
 
 function saveSession(session) {
-  write(SESSION_KEY, session);
+  return write(SESSION_KEY, session);
 }
 
 function clearSession() {
@@ -2801,6 +2806,8 @@ const STRINGS = {
     "upload.failed": "✗ Import failed — no valid questions found.",
     "upload.more": "...and {n} more.",
     "upload.import": "Import {n} question(s) into a new set",
+    "storage.sessionNotSaved": "This exam can't be saved in this browser (storage is full or disabled). Don't reload or close the tab, or the exam will be lost.",
+    "storage.progressNotSaved": "Your result couldn't be saved to Progress: browser storage is full or disabled. Export it if you want to keep it.",
     "upload.storageFull": "Could not save this set: browser storage is full or disabled. Remove an older set and try again.",
 
     "dialog.ok": "OK",
@@ -2999,6 +3006,8 @@ const STRINGS = {
     "upload.failed": "✗ Импорт не удался — корректных вопросов нет.",
     "upload.more": "…и ещё {n}.",
     "upload.import": "Импортировать в новый набор (вопросов: {n})",
+    "storage.sessionNotSaved": "Экзамен не удаётся сохранить в этом браузере (хранилище переполнено или отключено). Не перезагружайте и не закрывайте вкладку, иначе экзамен пропадёт.",
+    "storage.progressNotSaved": "Результат не удалось сохранить в «Прогресс»: хранилище браузера переполнено или отключено. Экспортируйте его, если хотите сохранить.",
     "upload.storageFull": "Не удалось сохранить набор: хранилище браузера переполнено или отключено. Удалите старый набор и попробуйте снова.",
 
     "dialog.ok": "ОК",
@@ -4334,6 +4343,7 @@ function enterExam() {
 
 // keepSaved: another tab owns the exam now, so its saved copy must not be deleted.
 function endSession({ keepSaved = false } = {}) {
+  el("#save-warning").hidden = true;
   dismissAllDialogs();
   stopTimer();
   clearInterval(heartbeatId);
@@ -4347,7 +4357,9 @@ function endSession({ keepSaved = false } = {}) {
 function persistSession({ alive = true } = {}) {
   const s = state.session;
   if (!s) return;
-  saveSession({ ...s, marked: [...s.marked], checked: [...s.checked], ownerTab: TAB_ID, heartbeatAt: alive ? Date.now() : 0 });
+  const saved = saveSession({ ...s, marked: [...s.marked], checked: [...s.checked], ownerTab: TAB_ID, heartbeatAt: alive ? Date.now() : 0 });
+  // Stays up until a save succeeds again, so the user knows a reload would lose the exam.
+  el("#save-warning").hidden = saved;
 }
 
 function restoreSession(saved) {
@@ -4886,8 +4898,9 @@ function recordProgress(s, result) {
   const outcomes = result.details
     .filter((d) => isAnswered(s, d.question))
     .map((d) => ({ key: questionId(d.question), correct: d.correct }));
-  saveStats(updateStats(loadStats(), outcomes, now));
-  saveHistory(addAttempt(loadHistory(), attemptRecord(result, { mode: s.mode, now })));
+  const statsSaved = saveStats(updateStats(loadStats(), outcomes, now));
+  const historySaved = saveHistory(addAttempt(loadHistory(), attemptRecord(result, { mode: s.mode, now })));
+  if (!statsSaved || !historySaved) showToast(t("storage.progressNotSaved"), { durationMs: 12000 });
 }
 
 // Every question in every set (enabled or not), one per content id, so review works

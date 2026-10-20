@@ -502,6 +502,7 @@ function enterExam() {
 
 // keepSaved: another tab owns the exam now, so its saved copy must not be deleted.
 function endSession({ keepSaved = false } = {}) {
+  el("#save-warning").hidden = true;
   dismissAllDialogs();
   stopTimer();
   clearInterval(heartbeatId);
@@ -515,7 +516,9 @@ function endSession({ keepSaved = false } = {}) {
 function persistSession({ alive = true } = {}) {
   const s = state.session;
   if (!s) return;
-  saveSession({ ...s, marked: [...s.marked], checked: [...s.checked], ownerTab: TAB_ID, heartbeatAt: alive ? Date.now() : 0 });
+  const saved = saveSession({ ...s, marked: [...s.marked], checked: [...s.checked], ownerTab: TAB_ID, heartbeatAt: alive ? Date.now() : 0 });
+  // Stays up until a save succeeds again, so the user knows a reload would lose the exam.
+  el("#save-warning").hidden = saved;
 }
 
 function restoreSession(saved) {
@@ -1054,8 +1057,9 @@ function recordProgress(s, result) {
   const outcomes = result.details
     .filter((d) => isAnswered(s, d.question))
     .map((d) => ({ key: questionId(d.question), correct: d.correct }));
-  saveStats(updateStats(loadStats(), outcomes, now));
-  saveHistory(addAttempt(loadHistory(), attemptRecord(result, { mode: s.mode, now })));
+  const statsSaved = saveStats(updateStats(loadStats(), outcomes, now));
+  const historySaved = saveHistory(addAttempt(loadHistory(), attemptRecord(result, { mode: s.mode, now })));
+  if (!statsSaved || !historySaved) showToast(t("storage.progressNotSaved"), { durationMs: 12000 });
 }
 
 // Every question in every set (enabled or not), one per content id, so review works

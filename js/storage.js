@@ -63,7 +63,7 @@ export function loadSession() {
 }
 
 export function saveSession(session) {
-  write(SESSION_KEY, session);
+  return write(SESSION_KEY, session);
 }
 
 export function clearSession() {

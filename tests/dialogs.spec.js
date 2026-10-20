@@ -46,3 +46,22 @@ test("timer running out while 'Submit anyway?' is open submits and closes the di
   await expect(page.locator("#page-results")).toHaveClass(/active/);
   await expect(modal(page)).toHaveCount(0);
 });
+
+test("a warning stays up while the exam can't be saved, and clears once saving works", async ({ page }) => {
+  await startExam(page, { n: 3 });
+  await expect(page.locator("#save-warning")).toBeHidden();
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    window.__restoreSetItem = () => (Storage.prototype.setItem = original);
+    Storage.prototype.setItem = function (key, value) {
+      if (key === "examsim.session.v1") throw new DOMException("full", "QuotaExceededError");
+      return original.call(this, key, value);
+    };
+  });
+  await page.click("#next-btn");
+  await expect(page.locator("#save-warning")).toBeVisible();
+  await expect(page.locator("#save-warning")).toContainText("Don't reload");
+  await page.evaluate(() => window.__restoreSetItem());
+  await page.click("#prev-btn");
+  await expect(page.locator("#save-warning")).toBeHidden();
+});

@@ -43,6 +43,7 @@ export function attemptRecord(result, { mode, now }) {
     percent: result.percent,
     scaled: result.scaled,
     passed: result.passed,
+    totalTimeMs: result.totalTimeMs ?? null,
     perObjective,
   };
 }

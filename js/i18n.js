@@ -131,6 +131,9 @@ const STRINGS = {
     "results.scaled":
       "Estimated scaled score: {scaled} / {max}, passing {pass}.{note} CompTIA doesn't publish how raw points convert to the 100–900 scale (it is set per exam form), so this is a linear estimate: you need about {pct}% of the points to reach {pass}.",
     "results.noneMissed": "No missed questions — great job!",
+    "results.time": "Time: {total} in all, {avg} per question on average{split}. The real exam allows about 1 minute per question.",
+    "results.timeSplit": " (performance-based {pbq}, multiple choice {mcq})",
+    "progress.col.time": "Time",
 
     "upload.parseError": "Could not parse JSON: {msg}",
     "upload.ok": "✓ Parsed {n} valid question(s).",
@@ -362,6 +365,9 @@ const STRINGS = {
     "results.scaled":
       "Оценка по шкале: {scaled} / {max}, проходной балл {pass}.{note} CompTIA не публикует, как сырые баллы переводятся в шкалу 100–900 (это задаётся для каждого варианта экзамена), поэтому здесь линейная прикидка: для {pass} нужно около {pct}% баллов.",
     "results.noneMissed": "Ошибок нет — отличная работа!",
+    "results.time": "Время: всего {total}, в среднем {avg} на вопрос{split}. На реальном экзамене — около 1 минуты на вопрос.",
+    "results.timeSplit": " (PBQ — {pbq}, выбор ответа — {mcq})",
+    "progress.col.time": "Время",
 
     "upload.parseError": "Не удалось разобрать JSON: {msg}",
     "upload.ok": "✓ Распознано корректных вопросов: {n}.",

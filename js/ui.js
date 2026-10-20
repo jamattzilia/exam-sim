@@ -503,6 +503,7 @@ function beginSession(questions, endsAt, { mode = el("#mode-select").value } = {
     checked: new Set(),
     endsAt,
     durationMs: endsAt != null ? endsAt - Date.now() : null,
+    timeSpent: {},
     warned: [],
   };
   enterExam();
@@ -518,6 +519,7 @@ function enterExam() {
 
 // keepSaved: another tab owns the exam now, so its saved copy must not be deleted.
 function endSession({ keepSaved = false } = {}) {
+  stopViewing();
   el("#save-warning").hidden = true;
   dismissAllDialogs();
   stopTimer();
@@ -537,8 +539,43 @@ function persistSession({ alive = true } = {}) {
   el("#save-warning").hidden = saved;
 }
 
+// ------------------------------------------------------------ Time tracking
+
+// Time is counted only while a question is on screen and the tab is visible.
+let viewing = null; // { key, since } — since is null while the tab is hidden
+
+function stopViewing() {
+  const s = state.session;
+  if (viewing?.since != null && s) s.timeSpent[viewing.key] = (s.timeSpent[viewing.key] || 0) + (Date.now() - viewing.since);
+  viewing = null;
+}
+
+function startViewing(key) {
+  stopViewing();
+  viewing = { key, since: document.visibilityState === "visible" ? Date.now() : null };
+}
+
+function onVisibilityChange() {
+  if (!viewing) return;
+  if (document.visibilityState === "visible") {
+    if (viewing.since == null) viewing.since = Date.now();
+  } else {
+    const key = viewing.key;
+    stopViewing();
+    viewing = { key, since: null };
+  }
+}
+
+function formatDuration(ms) {
+  const total = Math.round(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = String(total % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+}
+
 function restoreSession(saved) {
-  return { warned: [], ...saved, mode: saved.mode || "exam", marked: new Set(saved.marked || []), checked: new Set(saved.checked || []) };
+  return { warned: [], timeSpent: {}, ...saved, mode: saved.mode || "exam", marked: new Set(saved.marked || []), checked: new Set(saved.checked || []) };
 }
 
 function isRunningInAnotherTab(saved) {
@@ -663,6 +700,7 @@ function renderExam() {
   const s = state.session;
   const q = s.questions[s.index];
   if (!(q._key in s.answers)) s.answers[q._key] = blankResponse(q);
+  if (viewing?.key !== q._key) startViewing(q._key);
 
   el("#exam-progress").textContent = t("exam.progress", { i: s.index + 1, n: s.questions.length });
   el("#exam-timer-wrap").style.display = s.timerEnabled ? "inline-block" : "none";
@@ -727,6 +765,7 @@ function renderFeedback(q, s) {
 function showReviewScreen() {
   const s = state.session;
   if (!s) return;
+  stopViewing();
   state.reviewing = true;
   el("#question-view").hidden = true;
   el("#review-screen").hidden = false;
@@ -1056,7 +1095,10 @@ async function finishExam() {
   // untouched checkboxes that happen to match "unchecked", would earn partial credit.
   const answers = { ...s.answers };
   for (const q of s.questions) if (!isAnswered(s, q)) answers[q._key] = [];
+  stopViewing();
   const result = scoreSession(s.questions, answers, { partialCredit: s.partialCredit !== false });
+  for (const d of result.details) d.timeMs = s.timeSpent[d.question._key] || 0;
+  result.totalTimeMs = result.details.reduce((sum, d) => sum + d.timeMs, 0);
   recordProgress(s, result);
   state.lastResult = result;
   endSession();
@@ -1300,7 +1342,7 @@ function renderProgress() {
     list.appendChild(ce("p", { class: "hint" }, t("progress.noAttempts")));
   } else {
     const table = ce("table", { class: "history-table" }, [
-      ce("thead", {}, [ce("tr", {}, ["date", "mode", "score", "scaled", "result"].map((h) => ce("th", {}, t(`progress.col.${h}`))))]),
+      ce("thead", {}, [ce("tr", {}, ["date", "mode", "score", "scaled", "time", "result"].map((h) => ce("th", {}, t(`progress.col.${h}`))))]),
     ]);
     const body = ce("tbody");
     for (const a of [...history].reverse().slice(0, 30)) {
@@ -1310,6 +1352,7 @@ function renderProgress() {
           ce("td", {}, t(a.mode === "practice" ? "progress.mode.practice" : "progress.mode.exam")),
           ce("td", {}, `${fmtPoints(a.points)} / ${a.total} (${a.percent}%)`),
           ce("td", {}, String(a.scaled)),
+          ce("td", {}, a.totalTimeMs ? formatDuration(a.totalTimeMs) : "—"),
           ce("td", { class: a.passed ? "pass-text" : "fail-text" }, t(a.passed ? "progress.pass" : "progress.fail")),
         ])
       );
@@ -1323,6 +1366,18 @@ function renderProgress() {
 
 const fmtPoints = (n) => String(Math.round(n * 100) / 100);
 
+function describeTiming(result) {
+  if (!result.totalTimeMs) return "";
+  const avg = (details) => formatDuration(details.reduce((s, d) => s + d.timeMs, 0) / details.length);
+  const pbq = result.details.filter((d) => isPbq(d.question));
+  const mcq = result.details.filter((d) => !isPbq(d.question));
+  return t("results.time", {
+    total: formatDuration(result.totalTimeMs),
+    avg: avg(result.details),
+    split: pbq.length && mcq.length ? t("results.timeSplit", { pbq: avg(pbq), mcq: avg(mcq) }) : "",
+  });
+}
+
 function renderResults(result) {
   el("#result-score").textContent = `${fmtPoints(result.points)} / ${result.total} (${result.percent}%)`;
   const note = result.partialCredit && result.points !== result.correctCount ? t("results.partialNote", { n: result.correctCount }) : "";
@@ -1333,6 +1388,7 @@ function renderResults(result) {
     note,
     pct: passingPercent(),
   });
+  el("#result-time").textContent = describeTiming(result);
   const passBadge = el("#result-pass");
   passBadge.textContent = t(result.passed ? "results.pass" : "results.fail");
   passBadge.className = `badge-pass ${result.passed ? "pass" : "fail"}`;
@@ -1430,6 +1486,7 @@ function exportResultsJSON(result) {
       percent: result.percent,
       partialCredit: result.partialCredit,
       estimatedScaledScore: result.scaled,
+      totalTimeSeconds: Math.round((result.totalTimeMs || 0) / 1000),
       passed: result.passed,
     },
     perDomain: result.perDomain,
@@ -1445,6 +1502,7 @@ function exportResultsJSON(result) {
       rawYourAnswer: d.selected,
       correct: d.correct,
       points: d.points,
+      timeSeconds: Math.round((d.timeMs || 0) / 1000),
       explanation: d.question.explanation || "",
     })),
   };
@@ -1468,7 +1526,7 @@ function csvEscape(value, delimiter) {
 
 function exportResultsCSV(result) {
   const { delimiter, number } = csvFormat();
-  const header = ["id", "domain", "objective", "type", "question", "correct_answer", "your_answer", "result", "points", "explanation"];
+  const header = ["id", "domain", "objective", "type", "question", "correct_answer", "your_answer", "result", "points", "time_s", "explanation"];
   const rows = result.details.map((d) => {
     const q = d.question;
     return [
@@ -1481,6 +1539,7 @@ function exportResultsCSV(result) {
       describeYourAnswer(q, d.selected),
       d.correct ? "correct" : d.points > 0 ? "partial" : "incorrect",
       number(d.points),
+      Math.round((d.timeMs || 0) / 1000),
       q.explanation || "",
     ];
   });
@@ -1489,6 +1548,7 @@ function exportResultsCSV(result) {
   const summary = [
     ["Score", `${number(result.points)}/${result.total} (${number(result.percent)}%)`],
     ["Estimated scaled score", `${result.scaled}/${EXAM_INFO.scaledScoreRange[1]}`],
+    ["Total time", formatDuration(result.totalTimeMs || 0)],
   ];
   const csv = [header, ...rows, [], ...summary].map((r) => r.map((v) => csvEscape(v, delimiter)).join(delimiter)).join("\r\n");
   // BOM so Excel detects UTF-8 (otherwise "→" and non-Latin text are garbled).
@@ -1590,6 +1650,7 @@ function renderReviewDetails(result, onlyIncorrect) {
         ce("span", { class: "obj-code" }, q.domain),
         ce("span", {}, typeLabel(q.type)),
         ce("span", {}, statusLabel({ status, points: d.points })),
+        d.timeMs ? ce("span", { class: "time-tag" }, `⏱ ${formatDuration(d.timeMs)}`) : null,
         flagButton(q),
       ]));
       item.appendChild(ce("div", { class: "review-question" }, q.question));
@@ -1882,7 +1943,16 @@ export function initApp() {
   refreshPoolCount();
   showPage("page-setup");
   window.addEventListener("storage", onSessionStorageChange);
-  window.addEventListener("pagehide", () => persistSession({ alive: false }));
+  window.addEventListener("pagehide", () => {
+    stopViewing(); // bank the time on screen before saving
+    persistSession({ alive: false });
+  });
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  // Back from the back/forward cache after pagehide stopped the clock.
+  window.addEventListener("pageshow", (e) => {
+    const s = state.session;
+    if (e.persisted && s && !state.reviewing) startViewing(s.questions[s.index]._key);
+  });
   registerServiceWorker();
   resumeSavedSession();
 }

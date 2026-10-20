@@ -697,6 +697,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
         <p data-i18n="progress.storageNote">
           This browser hasn't promised to keep your data: it may clear it when space runs low, and Safari deletes it after 7 days without a visit. Make a backup to be safe.
         </p>
+        <button class="btn backup-download-btn" data-i18n="backup.download">Download backup</button>
       </div>
       <div class="panel">
         <h2 data-i18n="progress.review.title">Review</h2>
@@ -717,6 +718,18 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
         <h2 data-i18n="progress.history.title">Attempt history</h2>
         <div id="attempt-history"></div>
         <button id="clear-progress-btn" class="btn-link danger" data-i18n="progress.clear">Clear history and review data</button>
+      </div>
+
+      <div class="panel">
+        <h2 data-i18n="backup.title">Backup</h2>
+        <p class="hint" data-i18n="backup.hint">
+          One file with your uploaded sets, attempt history, review data and settings — to keep it safe or move it to another device or browser.
+        </p>
+        <div class="quick-actions">
+          <button class="btn primary backup-download-btn" data-i18n="backup.download">Download backup</button>
+          <button id="restore-btn" class="btn" data-i18n="backup.restore">Restore from backup…</button>
+          <input type="file" id="restore-input" accept="application/json,.json" hidden />
+        </div>
       </div>
     </section>
 
@@ -2287,6 +2300,10 @@ function loadUploadedSets() {
   return read(SETS_KEY, []);
 }
 
+function saveUploadedSets(sets) {
+  return write(SETS_KEY, sets);
+}
+
 function addUploadedSet(set) {
   return write(SETS_KEY, [...loadUploadedSets(), set]);
 }
@@ -2367,7 +2384,7 @@ function clearProgress() {
     // storage unavailable; nothing to clear
   }
 }
-return { SESSION_KEY, loadUploadedSets, addUploadedSet, renameUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, loadLanguage, saveLanguage, loadTheme, saveTheme, loadHistory, saveHistory, loadStats, saveStats, clearProgress };
+return { SESSION_KEY, loadUploadedSets, saveUploadedSets, addUploadedSet, renameUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, loadLanguage, saveLanguage, loadTheme, saveTheme, loadHistory, saveHistory, loadStats, saveStats, clearProgress };
 })();
 
 // js/progress.js
@@ -2439,7 +2456,7 @@ function objectiveAccuracy(history) {
     .map((t) => ({ ...t, percent: Math.round((t.points / t.total) * 100) }))
     .sort((a, b) => a.percent - b.percent || b.total - a.total || a.id.localeCompare(b.id, undefined, { numeric: true }));
 }
-return { REVIEW_INTERVAL_DAYS, updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy };
+return { REVIEW_INTERVAL_DAYS, MAX_ATTEMPTS, updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy };
 })();
 
 // js/validation.js
@@ -2671,6 +2688,88 @@ function validateQuestionSet(raw, sourceLabel = "uploaded file") {
 return { BLANK_TOKEN, validateQuestionSet };
 })();
 
+// js/backup.js
+const __mod_js_backup_js = (() => {
+  const { validateQuestionSet } = __mod_js_validation_js;
+  const { MAX_ATTEMPTS } = __mod_js_progress_js;
+// Backup file format and merge rules. Pure functions; storage access lives in ui.js.
+
+
+
+const KIND = "exam-sim-backup";
+const VERSION = 1;
+
+function buildBackup({ sets, settings, history, stats, language, theme }, now = Date.now()) {
+  return { kind: KIND, version: VERSION, exportedAt: new Date(now).toISOString(), data: { sets, settings, history, stats, language, theme } };
+}
+
+const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+
+// Returns { ok: true, backup, skippedSets } or { ok: false, error }. Every question set
+// goes through the same validation as an upload; broken sets are skipped, not imported.
+function parseBackup(raw) {
+  if (!isObject(raw) || raw.kind !== KIND || !isObject(raw.data)) return { ok: false, error: "not an exam-sim backup file" };
+  if (raw.version !== VERSION) return { ok: false, error: `unsupported backup version ${raw.version}` };
+  const d = raw.data;
+  const sets = [];
+  let skippedSets = 0;
+  for (const set of Array.isArray(d.sets) ? d.sets : []) {
+    const result = isObject(set) && typeof set.id === "string" ? validateQuestionSet(set, set.setName || set.id) : null;
+    if (!result?.valid) {
+      skippedSets++;
+      continue;
+    }
+    sets.push({ id: set.id, setName: result.set.setName, description: result.set.description, questions: result.set.questions });
+  }
+  const history = (Array.isArray(d.history) ? d.history : []).filter((a) => isObject(a) && Number.isFinite(a.finishedAt) && Number.isFinite(a.total));
+  const stats = Object.fromEntries(
+    Object.entries(isObject(d.stats) ? d.stats : {}).filter(([, e]) => isObject(e) && Number.isInteger(e.box) && Number.isFinite(e.lastSeen))
+  );
+  return {
+    ok: true,
+    skippedSets,
+    backup: {
+      exportedAt: raw.exportedAt,
+      sets,
+      history,
+      stats,
+      settings: isObject(d.settings) ? d.settings : null,
+      language: typeof d.language === "string" ? d.language : null,
+      theme: typeof d.theme === "string" ? d.theme : null,
+    },
+  };
+}
+
+// Merges a backup into the current data without losing anything already here:
+// sets are added unless the same set id exists, attempts are deduplicated by finish
+// time, and for each question the more recently reviewed stats entry wins.
+// Preferences (settings, language, theme) come from the backup.
+function mergeBackup(current, backup) {
+  const setIds = new Set(current.sets.map((s) => s.id));
+  const newSets = backup.sets.filter((s) => !setIds.has(s.id));
+
+  const seenAttempts = new Set(current.history.map((a) => a.finishedAt));
+  const newAttempts = backup.history.filter((a) => !seenAttempts.has(a.finishedAt));
+  const history = [...current.history, ...newAttempts].sort((a, b) => a.finishedAt - b.finishedAt).slice(-MAX_ATTEMPTS);
+
+  const stats = { ...current.stats };
+  for (const [key, entry] of Object.entries(backup.stats)) {
+    if (!stats[key] || stats[key].lastSeen < entry.lastSeen) stats[key] = entry;
+  }
+
+  return {
+    sets: [...current.sets, ...newSets],
+    history,
+    stats,
+    settings: backup.settings ?? current.settings,
+    language: backup.language ?? current.language,
+    theme: backup.theme ?? current.theme,
+    added: { sets: newSets.length, attempts: newAttempts.length },
+  };
+}
+return { buildBackup, parseBackup, mergeBackup };
+})();
+
 // js/i18n.js
 const __mod_js_i18n_js = (() => {
 // Interface translations (English / Russian). Exam content — questions, domain and
@@ -2839,6 +2938,16 @@ const STRINGS = {
 
     "progress.storageNote":
       "This browser hasn't promised to keep your data: it may clear it when space runs low, and Safari deletes it after 7 days without a visit. Make a backup to be safe.",
+    "backup.title": "Backup",
+    "backup.hint": "One file with your uploaded sets, attempt history, review data and settings — to keep it safe or move it to another device or browser.",
+    "backup.download": "Download backup",
+    "backup.restore": "Restore from backup…",
+    "backup.invalid": "This file can't be restored: {msg}.",
+    "backup.confirm":
+      "Restore the backup from {date}? It has {sets} question set(s), {attempts} attempt(s) and review data for {reviewed} question(s). They'll be merged with what's here (nothing is deleted); settings, language and theme come from the backup.",
+    "backup.confirmBtn": "Restore",
+    "backup.done": "Backup restored: {sets} new set(s), {attempts} new attempt(s).",
+    "backup.skipped": "{n} damaged set(s) in the file were skipped.",
     "progress.review.title": "Review",
     "progress.review.hint":
       "Spaced repetition: a question you miss is due again right away; each correct answer pushes its next review further out (1, 3, 7, then 21 days).",
@@ -3041,6 +3150,16 @@ const STRINGS = {
 
     "progress.storageNote":
       "Браузер не гарантирует сохранность ваших данных: он может удалить их при нехватке места, а Safari удаляет их через 7 дней без посещений. На всякий случай сделайте резервную копию.",
+    "backup.title": "Резервная копия",
+    "backup.hint": "Один файл с загруженными наборами, историей попыток, данными повторения и настройками — чтобы не потерять их или перенести на другое устройство или в другой браузер.",
+    "backup.download": "Скачать резервную копию",
+    "backup.restore": "Восстановить из копии…",
+    "backup.invalid": "Этот файл нельзя восстановить: {msg}.",
+    "backup.confirm":
+      "Восстановить копию от {date}? В ней наборов: {sets}, попыток: {attempts}, вопросов с данными повторения: {reviewed}. Всё будет объединено с текущими данными (ничего не удаляется); настройки, язык и тема берутся из копии.",
+    "backup.confirmBtn": "Восстановить",
+    "backup.done": "Копия восстановлена: новых наборов — {sets}, новых попыток — {attempts}.",
+    "backup.skipped": "Повреждённых наборов в файле пропущено: {n}.",
     "progress.review.title": "Повторение",
     "progress.review.hint":
       "Интервальное повторение: вопрос с ошибкой нужно повторить сразу; каждый верный ответ отодвигает следующее повторение (1, 3, 7, затем 21 день).",
@@ -3892,8 +4011,9 @@ const __mod_js_ui_js = (() => {
   const { DOMAINS, OBJECTIVE_INDEX, EXAM_INFO, allObjectiveIds } = __mod_js_data_objectives_js;
   const { SAMPLE_SET } = __mod_js_data_sampleQuestions_js;
   const { DOMAIN2_21_23_SET } = __mod_js_data_domain2Set_js;
-  const { loadUploadedSets, addUploadedSet, removeUploadedSet, renameUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, SESSION_KEY, loadLanguage, saveLanguage, loadTheme, saveTheme, loadHistory, saveHistory, loadStats, saveStats, clearProgress } = __mod_js_storage_js;
+  const { loadUploadedSets, addUploadedSet, removeUploadedSet, renameUploadedSet, saveUploadedSets, loadSettings, saveSettings, loadSession, saveSession, clearSession, SESSION_KEY, loadLanguage, saveLanguage, loadTheme, saveTheme, loadHistory, saveHistory, loadStats, saveStats, clearProgress } = __mod_js_storage_js;
   const { updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy } = __mod_js_progress_js;
+  const { buildBackup, parseBackup, mergeBackup } = __mod_js_backup_js;
   const { validateQuestionSet, BLANK_TOKEN } = __mod_js_validation_js;
   const { confirmDialog, alertDialog, promptDialog, dismissAllDialogs, showToast } = __mod_js_dialog_js;
   const { t, setLanguage, getLanguage, defaultLanguage, translatePage } = __mod_js_i18n_js;
@@ -5403,7 +5523,62 @@ function wireExam() {
   });
 }
 
+function downloadBackup() {
+  const backup = buildBackup({
+    sets: loadUploadedSets(),
+    settings: loadSettings(),
+    history: loadHistory(),
+    stats: loadStats(),
+    language: getLanguage(),
+    theme: loadTheme(),
+  });
+  downloadFile(`exam-sim-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(backup, null, 2), "application/json");
+}
+
+async function restoreBackup(file) {
+  let raw;
+  try {
+    raw = JSON.parse(await file.text());
+  } catch (e) {
+    return alertDialog(t("backup.invalid", { msg: e.message }));
+  }
+  const parsed = parseBackup(raw);
+  if (!parsed.ok) return alertDialog(t("backup.invalid", { msg: parsed.error }));
+  const b = parsed.backup;
+  const summary = t("backup.confirm", {
+    date: b.exportedAt ? new Date(b.exportedAt).toLocaleString() : "?",
+    sets: b.sets.length,
+    attempts: b.history.length,
+    reviewed: Object.keys(b.stats).length,
+  });
+  const note = parsed.skippedSets ? `\n\n${t("backup.skipped", { n: parsed.skippedSets })}` : "";
+  if (!(await confirmDialog(summary + note, { confirmText: t("backup.confirmBtn") }))) return;
+
+  const current = { sets: loadUploadedSets(), history: loadHistory(), stats: loadStats(), settings: loadSettings(), language: getLanguage(), theme: loadTheme() };
+  const merged = mergeBackup(current, b);
+  if (![saveUploadedSets(merged.sets), saveHistory(merged.history), saveStats(merged.stats)].every(Boolean)) {
+    return alertDialog(t("upload.storageFull"));
+  }
+  if (merged.settings) saveSettings(merged.settings);
+  saveLanguage(merged.language);
+  saveTheme(merged.theme);
+
+  state.sets = loadUploadedSets();
+  applySavedSettings(loadSettings());
+  migrateStatsKeys(); // a backup from an older version may still use set-based keys
+  applyTheme(merged.theme);
+  applyLanguage(merged.language); // re-renders sets, filters and this page
+  showToast(t("backup.done", { sets: merged.added.sets, attempts: merged.added.attempts }));
+}
+
 function wireProgress() {
+  elAll(".backup-download-btn").forEach((b) => b.addEventListener("click", downloadBackup));
+  el("#restore-btn").addEventListener("click", () => el("#restore-input").click());
+  el("#restore-input").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (file) restoreBackup(file);
+  });
   el("#clear-progress-btn").addEventListener("click", async () => {
     const ok = await confirmDialog(t("progress.clearConfirm"), {
       confirmText: t("progress.delete"),

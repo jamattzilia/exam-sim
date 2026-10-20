@@ -7,7 +7,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // (due immediately); each fully correct answer moves it up one box.
 export const REVIEW_INTERVAL_DAYS = [0, 1, 3, 7, 21];
 const TOP_BOX = REVIEW_INTERVAL_DAYS.length - 1;
-const MAX_ATTEMPTS = 200;
+export const MAX_ATTEMPTS = 200;
 
 // outcomes: [{ key, correct }] for questions the user actually answered.
 export function updateStats(stats, outcomes, now) {

@@ -35,6 +35,10 @@ export function loadUploadedSets() {
   return read(SETS_KEY, []);
 }
 
+export function saveUploadedSets(sets) {
+  return write(SETS_KEY, sets);
+}
+
 export function addUploadedSet(set) {
   return write(SETS_KEY, [...loadUploadedSets(), set]);
 }

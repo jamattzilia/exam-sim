@@ -164,6 +164,16 @@ const STRINGS = {
 
     "progress.storageNote":
       "This browser hasn't promised to keep your data: it may clear it when space runs low, and Safari deletes it after 7 days without a visit. Make a backup to be safe.",
+    "backup.title": "Backup",
+    "backup.hint": "One file with your uploaded sets, attempt history, review data and settings — to keep it safe or move it to another device or browser.",
+    "backup.download": "Download backup",
+    "backup.restore": "Restore from backup…",
+    "backup.invalid": "This file can't be restored: {msg}.",
+    "backup.confirm":
+      "Restore the backup from {date}? It has {sets} question set(s), {attempts} attempt(s) and review data for {reviewed} question(s). They'll be merged with what's here (nothing is deleted); settings, language and theme come from the backup.",
+    "backup.confirmBtn": "Restore",
+    "backup.done": "Backup restored: {sets} new set(s), {attempts} new attempt(s).",
+    "backup.skipped": "{n} damaged set(s) in the file were skipped.",
     "progress.review.title": "Review",
     "progress.review.hint":
       "Spaced repetition: a question you miss is due again right away; each correct answer pushes its next review further out (1, 3, 7, then 21 days).",
@@ -366,6 +376,16 @@ const STRINGS = {
 
     "progress.storageNote":
       "Браузер не гарантирует сохранность ваших данных: он может удалить их при нехватке места, а Safari удаляет их через 7 дней без посещений. На всякий случай сделайте резервную копию.",
+    "backup.title": "Резервная копия",
+    "backup.hint": "Один файл с загруженными наборами, историей попыток, данными повторения и настройками — чтобы не потерять их или перенести на другое устройство или в другой браузер.",
+    "backup.download": "Скачать резервную копию",
+    "backup.restore": "Восстановить из копии…",
+    "backup.invalid": "Этот файл нельзя восстановить: {msg}.",
+    "backup.confirm":
+      "Восстановить копию от {date}? В ней наборов: {sets}, попыток: {attempts}, вопросов с данными повторения: {reviewed}. Всё будет объединено с текущими данными (ничего не удаляется); настройки, язык и тема берутся из копии.",
+    "backup.confirmBtn": "Восстановить",
+    "backup.done": "Копия восстановлена: новых наборов — {sets}, новых попыток — {attempts}.",
+    "backup.skipped": "Повреждённых наборов в файле пропущено: {n}.",
     "progress.review.title": "Повторение",
     "progress.review.hint":
       "Интервальное повторение: вопрос с ошибкой нужно повторить сразу; каждый верный ответ отодвигает следующее повторение (1, 3, 7, затем 21 день).",

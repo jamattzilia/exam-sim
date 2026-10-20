@@ -6,6 +6,7 @@ import {
   addUploadedSet,
   removeUploadedSet,
   renameUploadedSet,
+  saveUploadedSets,
   loadSettings,
   saveSettings,
   loadSession,
@@ -23,6 +24,7 @@ import {
   clearProgress,
 } from "./storage.js";
 import { updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy } from "./progress.js";
+import { buildBackup, parseBackup, mergeBackup } from "./backup.js";
 import { validateQuestionSet, BLANK_TOKEN } from "./validation.js";
 import { confirmDialog, alertDialog, promptDialog, dismissAllDialogs, showToast } from "./dialog.js";
 import { t, setLanguage, getLanguage, defaultLanguage, translatePage } from "./i18n.js";
@@ -1551,7 +1553,62 @@ function wireExam() {
   });
 }
 
+function downloadBackup() {
+  const backup = buildBackup({
+    sets: loadUploadedSets(),
+    settings: loadSettings(),
+    history: loadHistory(),
+    stats: loadStats(),
+    language: getLanguage(),
+    theme: loadTheme(),
+  });
+  downloadFile(`exam-sim-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(backup, null, 2), "application/json");
+}
+
+async function restoreBackup(file) {
+  let raw;
+  try {
+    raw = JSON.parse(await file.text());
+  } catch (e) {
+    return alertDialog(t("backup.invalid", { msg: e.message }));
+  }
+  const parsed = parseBackup(raw);
+  if (!parsed.ok) return alertDialog(t("backup.invalid", { msg: parsed.error }));
+  const b = parsed.backup;
+  const summary = t("backup.confirm", {
+    date: b.exportedAt ? new Date(b.exportedAt).toLocaleString() : "?",
+    sets: b.sets.length,
+    attempts: b.history.length,
+    reviewed: Object.keys(b.stats).length,
+  });
+  const note = parsed.skippedSets ? `\n\n${t("backup.skipped", { n: parsed.skippedSets })}` : "";
+  if (!(await confirmDialog(summary + note, { confirmText: t("backup.confirmBtn") }))) return;
+
+  const current = { sets: loadUploadedSets(), history: loadHistory(), stats: loadStats(), settings: loadSettings(), language: getLanguage(), theme: loadTheme() };
+  const merged = mergeBackup(current, b);
+  if (![saveUploadedSets(merged.sets), saveHistory(merged.history), saveStats(merged.stats)].every(Boolean)) {
+    return alertDialog(t("upload.storageFull"));
+  }
+  if (merged.settings) saveSettings(merged.settings);
+  saveLanguage(merged.language);
+  saveTheme(merged.theme);
+
+  state.sets = loadUploadedSets();
+  applySavedSettings(loadSettings());
+  migrateStatsKeys(); // a backup from an older version may still use set-based keys
+  applyTheme(merged.theme);
+  applyLanguage(merged.language); // re-renders sets, filters and this page
+  showToast(t("backup.done", { sets: merged.added.sets, attempts: merged.added.attempts }));
+}
+
 function wireProgress() {
+  elAll(".backup-download-btn").forEach((b) => b.addEventListener("click", downloadBackup));
+  el("#restore-btn").addEventListener("click", () => el("#restore-input").click());
+  el("#restore-input").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (file) restoreBackup(file);
+  });
   el("#clear-progress-btn").addEventListener("click", async () => {
     const ok = await confirmDialog(t("progress.clearConfirm"), {
       confirmText: t("progress.delete"),

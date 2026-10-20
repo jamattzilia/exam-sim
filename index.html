@@ -190,6 +190,7 @@
         <p data-i18n="progress.storageNote">
           This browser hasn't promised to keep your data: it may clear it when space runs low, and Safari deletes it after 7 days without a visit. Make a backup to be safe.
         </p>
+        <button class="btn backup-download-btn" data-i18n="backup.download">Download backup</button>
       </div>
       <div class="panel">
         <h2 data-i18n="progress.review.title">Review</h2>
@@ -210,6 +211,18 @@
         <h2 data-i18n="progress.history.title">Attempt history</h2>
         <div id="attempt-history"></div>
         <button id="clear-progress-btn" class="btn-link danger" data-i18n="progress.clear">Clear history and review data</button>
+      </div>
+
+      <div class="panel">
+        <h2 data-i18n="backup.title">Backup</h2>
+        <p class="hint" data-i18n="backup.hint">
+          One file with your uploaded sets, attempt history, review data and settings — to keep it safe or move it to another device or browser.
+        </p>
+        <div class="quick-actions">
+          <button class="btn primary backup-download-btn" data-i18n="backup.download">Download backup</button>
+          <button id="restore-btn" class="btn" data-i18n="backup.restore">Restore from backup…</button>
+          <input type="file" id="restore-input" accept="application/json,.json" hidden />
+        </div>
       </div>
     </section>
 

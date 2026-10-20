@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { updateStats, isDue, objectiveAccuracy } from "../js/progress.js";
-import { openApp, onlyObjectives, startExam, answerModal, clickSubmit } from "./helpers.js";
+import { openApp, onlyObjectives, startExam, answerModal, clickSubmit, importUploaded } from "./helpers.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -96,5 +96,48 @@ test.describe("Progress page", () => {
     await answerModal(page, true);
     await expect(page.locator("#attempt-history")).toContainText("No finished attempts yet.");
     await expect(page.locator("#review-missed-btn")).toHaveText("Retry all missed (0)");
+  });
+});
+
+test("questionId depends on content, not on set or id", async () => {
+  const { questionId } = await import("../js/examEngine.js");
+  const q = { id: "q1", domain: "1.1", type: "single", question: "What?", options: ["a", "b"], answer: [0] };
+  expect(questionId({ ...q, id: "other", _setId: "up-1" })).toBe(questionId(q));
+  expect(questionId({ ...q, question: "What else?" })).not.toBe(questionId(q));
+  expect(questionId({ ...q, options: ["a", "c"] })).not.toBe(questionId(q));
+});
+
+test.describe("review history across sets", () => {
+  test.beforeEach(async ({ page }) => openApp(page));
+  const fixture = (name) => new URL(`./fixtures/${name}`, import.meta.url).pathname;
+
+  test("survives re-importing a set and counts a question present in two sets once", async ({ page }) => {
+    await importUploaded(page, fixture("collide-a.json"));
+    await page.locator(".set-row", { hasText: "Built-in Sample Set" }).locator("input").uncheck();
+    await startExam(page, { n: 1 });
+    await page.locator(".option-row", { hasText: "a1" }).locator("input").check(); // wrong
+    await clickSubmit(page);
+
+    await importUploaded(page, fixture("collide-a.json")); // same questions, new set id
+    await page.click('button.nav-btn[data-page="page-progress"]');
+    await expect(page.locator("#review-missed-btn")).toHaveText("Retry all missed (1)");
+
+    await page.click('button.nav-btn[data-page="page-setup"]');
+    await page.locator(".set-row", { hasText: "Set A" }).first().locator("button", { hasText: "Remove" }).click();
+    await answerModal(page, true);
+    await page.click('button.nav-btn[data-page="page-progress"]');
+    await expect(page.locator("#review-missed-btn")).toHaveText("Retry all missed (1)");
+  });
+
+  test("old set-based review keys are migrated", async ({ page }) => {
+    await page.evaluate(() => {
+      localStorage.setItem("examsim.stats.v1", JSON.stringify({ "builtin::s5": { box: 0, seen: 1, right: 0, lastSeen: Date.now() } }));
+    });
+    await page.reload();
+    await page.click('button.nav-btn[data-page="page-progress"]');
+    await expect(page.locator("#review-missed-btn")).toHaveText("Retry all missed (1)");
+    const keys = await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("examsim.stats.v1"))));
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).not.toContain("::");
   });
 });

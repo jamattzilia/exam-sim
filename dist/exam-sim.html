@@ -3274,6 +3274,22 @@ function fingerprint(q) {
   return [q.type, norm(q.question), ...parts.map(norm).sort()].join("\u0000");
 }
 
+// Short stable id for a question's content (cyrb53 hash of the fingerprint), so data
+// about a question — e.g. review stats — survives re-imports and combined sets.
+function questionId(q) {
+  const str = fingerprint(q);
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return "q" + (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
 // Keeps the first copy of each question (sets earlier in the list win).
 function dedupeQuestions(pool) {
   const seen = new Set();
@@ -3557,7 +3573,7 @@ function passingPercent() {
   const [lo, hi] = EXAM_INFO.scaledScoreRange;
   return Math.round(((EXAM_INFO.passingScaledScore - lo) / (hi - lo)) * 1000) / 10;
 }
-return { shuffle, buildPool, dedupeQuestions, stripRuntimeFields, poolStatsByObjective, weightedDomainCounts, pickQuestionsWeighted, pickQuestions, prepareSessionQuestions, blankResponse, hasAnyAnswer, blankMatches, rowMatches, isCorrect, partialScore, scoreSession, passingPercent };
+return { shuffle, buildPool, questionId, dedupeQuestions, stripRuntimeFields, poolStatsByObjective, weightedDomainCounts, pickQuestionsWeighted, pickQuestions, prepareSessionQuestions, blankResponse, hasAnyAnswer, blankMatches, rowMatches, isCorrect, partialScore, scoreSession, passingPercent };
 })();
 
 // js/promptTemplate.js
@@ -3861,7 +3877,7 @@ const __mod_js_ui_js = (() => {
   const { validateQuestionSet, BLANK_TOKEN } = __mod_js_validation_js;
   const { confirmDialog, alertDialog, promptDialog, dismissAllDialogs, showToast } = __mod_js_dialog_js;
   const { t, setLanguage, getLanguage, defaultLanguage, translatePage } = __mod_js_i18n_js;
-  const { buildPool, poolStatsByObjective, pickQuestions, pickQuestionsWeighted, prepareSessionQuestions, scoreSession, blankResponse, hasAnyAnswer, blankMatches, rowMatches, passingPercent, isCorrect, partialScore, shuffle, dedupeQuestions, stripRuntimeFields } = __mod_js_examEngine_js;
+  const { buildPool, poolStatsByObjective, pickQuestions, pickQuestionsWeighted, prepareSessionQuestions, scoreSession, blankResponse, hasAnyAnswer, blankMatches, rowMatches, passingPercent, isCorrect, partialScore, shuffle, dedupeQuestions, stripRuntimeFields, questionId } = __mod_js_examEngine_js;
   const { UPLOAD_FORMAT_DOC, UPLOAD_FORMAT_EXAMPLE } = __mod_js_promptTemplate_js;
 // Sets bundled with the app. The first one is enabled by default; the others can be
 // switched on in the "Question sets" panel and are available on every device.
@@ -4869,14 +4885,32 @@ function recordProgress(s, result) {
   const now = Date.now();
   const outcomes = result.details
     .filter((d) => isAnswered(s, d.question))
-    .map((d) => ({ key: d.question._key, correct: d.correct }));
+    .map((d) => ({ key: questionId(d.question), correct: d.correct }));
   saveStats(updateStats(loadStats(), outcomes, now));
   saveHistory(addAttempt(loadHistory(), attemptRecord(result, { mode: s.mode, now })));
 }
 
-// Every question in every set (enabled or not) by key, so review works regardless of filters.
-function allQuestionsByKey() {
-  return new Map(buildPool(allSets(), allObjectiveIds()).map((q) => [q._key, q]));
+// Every question in every set (enabled or not), one per content id, so review works
+// regardless of filters and a question present in two sets is reviewed once.
+function reviewableQuestions() {
+  return dedupeQuestions(buildPool(allSets(), allObjectiveIds())).questions;
+}
+
+// Review stats used to be keyed by "<set id>::<question id>", which lost history on
+// re-import. Convert those keys to content ids once, keeping the most recent entry.
+function migrateStatsKeys() {
+  const stats = loadStats();
+  const oldKeys = Object.keys(stats).filter((k) => k.includes("::"));
+  if (oldKeys.length === 0) return;
+  const byKey = new Map(buildPool(allSets(), allObjectiveIds()).map((q) => [q._key, q]));
+  const next = Object.fromEntries(Object.entries(stats).filter(([k]) => !k.includes("::")));
+  for (const key of oldKeys) {
+    const q = byKey.get(key);
+    if (!q) continue; // its set was removed
+    const id = questionId(q);
+    if (!next[id] || next[id].lastSeen < stats[key].lastSeen) next[id] = stats[key];
+  }
+  saveStats(next);
 }
 
 const MAX_REVIEW = 50;
@@ -4900,9 +4934,9 @@ function practiceObjective(objId) {
 function renderProgress() {
   const now = Date.now();
   const stats = loadStats();
-  const questions = [...allQuestionsByKey().values()];
-  const due = questions.filter((q) => isDue(stats[q._key], now));
-  const missed = questions.filter((q) => isMissed(stats[q._key]));
+  const questions = reviewableQuestions();
+  const due = questions.filter((q) => isDue(stats[questionId(q)], now));
+  const missed = questions.filter((q) => isMissed(stats[questionId(q)]));
 
   const actions = el("#review-actions");
   actions.innerHTML = "";
@@ -5410,6 +5444,7 @@ function wireLanguage() {
 
 function initApp() {
   state.sets = loadUploadedSets();
+  migrateStatsKeys();
   applySavedSettings(loadSettings());
   wireNav();
   wireSetup();

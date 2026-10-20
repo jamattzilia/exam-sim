@@ -43,6 +43,7 @@ import {
   shuffle,
   dedupeQuestions,
   stripRuntimeFields,
+  questionId,
 } from "./examEngine.js";
 import { UPLOAD_FORMAT_DOC, UPLOAD_FORMAT_EXAMPLE } from "./promptTemplate.js";
 
@@ -1052,14 +1053,32 @@ function recordProgress(s, result) {
   const now = Date.now();
   const outcomes = result.details
     .filter((d) => isAnswered(s, d.question))
-    .map((d) => ({ key: d.question._key, correct: d.correct }));
+    .map((d) => ({ key: questionId(d.question), correct: d.correct }));
   saveStats(updateStats(loadStats(), outcomes, now));
   saveHistory(addAttempt(loadHistory(), attemptRecord(result, { mode: s.mode, now })));
 }
 
-// Every question in every set (enabled or not) by key, so review works regardless of filters.
-function allQuestionsByKey() {
-  return new Map(buildPool(allSets(), allObjectiveIds()).map((q) => [q._key, q]));
+// Every question in every set (enabled or not), one per content id, so review works
+// regardless of filters and a question present in two sets is reviewed once.
+function reviewableQuestions() {
+  return dedupeQuestions(buildPool(allSets(), allObjectiveIds())).questions;
+}
+
+// Review stats used to be keyed by "<set id>::<question id>", which lost history on
+// re-import. Convert those keys to content ids once, keeping the most recent entry.
+function migrateStatsKeys() {
+  const stats = loadStats();
+  const oldKeys = Object.keys(stats).filter((k) => k.includes("::"));
+  if (oldKeys.length === 0) return;
+  const byKey = new Map(buildPool(allSets(), allObjectiveIds()).map((q) => [q._key, q]));
+  const next = Object.fromEntries(Object.entries(stats).filter(([k]) => !k.includes("::")));
+  for (const key of oldKeys) {
+    const q = byKey.get(key);
+    if (!q) continue; // its set was removed
+    const id = questionId(q);
+    if (!next[id] || next[id].lastSeen < stats[key].lastSeen) next[id] = stats[key];
+  }
+  saveStats(next);
 }
 
 const MAX_REVIEW = 50;
@@ -1083,9 +1102,9 @@ function practiceObjective(objId) {
 function renderProgress() {
   const now = Date.now();
   const stats = loadStats();
-  const questions = [...allQuestionsByKey().values()];
-  const due = questions.filter((q) => isDue(stats[q._key], now));
-  const missed = questions.filter((q) => isMissed(stats[q._key]));
+  const questions = reviewableQuestions();
+  const due = questions.filter((q) => isDue(stats[questionId(q)], now));
+  const missed = questions.filter((q) => isMissed(stats[questionId(q)]));
 
   const actions = el("#review-actions");
   actions.innerHTML = "";
@@ -1593,6 +1612,7 @@ function wireLanguage() {
 
 export function initApp() {
   state.sets = loadUploadedSets();
+  migrateStatsKeys();
   applySavedSettings(loadSettings());
   wireNav();
   wireSetup();

@@ -141,3 +141,42 @@ test.describe("review history across sets", () => {
     expect(keys[0]).not.toContain("::");
   });
 });
+
+test.describe("storage persistence", () => {
+  const stubStorage = (page, persisted) =>
+    page.addInitScript((p) => {
+      window.__persistCalls = 0;
+      Object.defineProperty(navigator, "storage", {
+        value: {
+          persisted: async () => p,
+          persist: async () => {
+            window.__persistCalls++;
+            return p;
+          },
+        },
+      });
+    }, persisted);
+
+  test("without a persistence promise the Progress tab says data may be cleared; finishing asks for persistence", async ({ page }) => {
+    await stubStorage(page, false);
+    await openApp(page);
+    await onlyObjectives(page, [[0, "1.3"]]);
+    await startExam(page, { n: 2 });
+    await page.locator(".option-row input").first().check();
+    await page.locator(".palette-btn").last().click();
+    await clickSubmit(page);
+    await answerModal(page, true);
+    expect(await page.evaluate(() => window.__persistCalls)).toBe(1);
+    await page.click('button.nav-btn[data-page="page-progress"]');
+    await expect(page.locator("#storage-note")).toBeVisible();
+    await expect(page.locator("#storage-note")).toContainText("Safari deletes it after 7 days");
+  });
+
+  test("with persistent storage granted the note is hidden", async ({ page }) => {
+    await stubStorage(page, true);
+    await openApp(page);
+    await page.click('button.nav-btn[data-page="page-progress"]');
+    await expect(page.locator("#review-due-btn")).toBeVisible();
+    await expect(page.locator("#storage-note")).toBeHidden();
+  });
+});

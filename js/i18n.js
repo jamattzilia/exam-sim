@@ -162,6 +162,8 @@ const STRINGS = {
     "tabs.startNew": "Start new exam",
     "tabs.closedHere": "This exam was continued in another tab, so it was closed here. Only one tab can run an exam at a time.",
 
+    "progress.storageNote":
+      "This browser hasn't promised to keep your data: it may clear it when space runs low, and Safari deletes it after 7 days without a visit. Make a backup to be safe.",
     "progress.review.title": "Review",
     "progress.review.hint":
       "Spaced repetition: a question you miss is due again right away; each correct answer pushes its next review further out (1, 3, 7, then 21 days).",
@@ -362,6 +364,8 @@ const STRINGS = {
     "tabs.startNew": "Начать новый",
     "tabs.closedHere": "Экзамен продолжили в другой вкладке, поэтому здесь он закрыт. Экзамен может идти только в одной вкладке.",
 
+    "progress.storageNote":
+      "Браузер не гарантирует сохранность ваших данных: он может удалить их при нехватке места, а Safari удаляет их через 7 дней без посещений. На всякий случай сделайте резервную копию.",
     "progress.review.title": "Повторение",
     "progress.review.hint":
       "Интервальное повторение: вопрос с ошибкой нужно повторить сразу; каждый верный ответ отодвигает следующее повторение (1, 3, 7, затем 21 день).",

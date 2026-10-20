@@ -509,6 +509,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 @media (hover: none) { .shortcuts-hint { display: none; } }
 .field-note { color: var(--text-muted); font-size: 0.8em; }
 .save-warning { background: var(--bad-bg); color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; font-weight: 600; font-size: 0.9rem; }
+.storage-note { border-color: var(--amber); background: var(--warn-bg); margin-bottom: 20px; padding: 14px 18px; }
+.storage-note p { margin: 0; font-size: 0.9rem; }
 </style>
   <!-- Apply a saved theme before first paint so a dark-theme user doesn't see a light flash. -->
   <script>
@@ -691,6 +693,11 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 
     <!-- ============================== PROGRESS PAGE ============================== -->
     <section id="page-progress" class="page">
+      <div id="storage-note" class="panel storage-note" hidden>
+        <p data-i18n="progress.storageNote">
+          This browser hasn't promised to keep your data: it may clear it when space runs low, and Safari deletes it after 7 days without a visit. Make a backup to be safe.
+        </p>
+      </div>
       <div class="panel">
         <h2 data-i18n="progress.review.title">Review</h2>
         <p class="hint" data-i18n="progress.review.hint">
@@ -2830,6 +2837,8 @@ const STRINGS = {
     "tabs.startNew": "Start new exam",
     "tabs.closedHere": "This exam was continued in another tab, so it was closed here. Only one tab can run an exam at a time.",
 
+    "progress.storageNote":
+      "This browser hasn't promised to keep your data: it may clear it when space runs low, and Safari deletes it after 7 days without a visit. Make a backup to be safe.",
     "progress.review.title": "Review",
     "progress.review.hint":
       "Spaced repetition: a question you miss is due again right away; each correct answer pushes its next review further out (1, 3, 7, then 21 days).",
@@ -3030,6 +3039,8 @@ const STRINGS = {
     "tabs.startNew": "Начать новый",
     "tabs.closedHere": "Экзамен продолжили в другой вкладке, поэтому здесь он закрыт. Экзамен может идти только в одной вкладке.",
 
+    "progress.storageNote":
+      "Браузер не гарантирует сохранность ваших данных: он может удалить их при нехватке места, а Safari удаляет их через 7 дней без посещений. На всякий случай сделайте резервную копию.",
     "progress.review.title": "Повторение",
     "progress.review.hint":
       "Интервальное повторение: вопрос с ошибкой нужно повторить сразу; каждый верный ответ отодвигает следующее повторение (1, 3, 7, затем 21 день).",
@@ -4269,6 +4280,7 @@ function showUploadResult(result) {
           }
           state.sets = loadUploadedSets();
           state.enabledSetIds.add(newSet.id);
+          requestPersistentStorage();
           renderSetsPanel();
           refreshPoolCount();
           box.style.display = "none";
@@ -4901,6 +4913,28 @@ function recordProgress(s, result) {
   const statsSaved = saveStats(updateStats(loadStats(), outcomes, now));
   const historySaved = saveHistory(addAttempt(loadHistory(), attemptRecord(result, { mode: s.mode, now })));
   if (!statsSaved || !historySaved) showToast(t("storage.progressNotSaved"), { durationMs: 12000 });
+  requestPersistentStorage();
+}
+
+// Asks the browser not to evict this site's data under storage pressure or, in
+// Safari, after days without a visit. Browsers decide; null means unsupported.
+async function requestPersistentStorage() {
+  try {
+    if (!navigator.storage?.persist) return null;
+    return (await navigator.storage.persisted()) || (await navigator.storage.persist());
+  } catch {
+    return null;
+  }
+}
+
+async function renderStorageNote() {
+  let persisted = null;
+  try {
+    persisted = navigator.storage?.persisted ? await navigator.storage.persisted() : null;
+  } catch {
+    persisted = null;
+  }
+  el("#storage-note").hidden = persisted === true;
 }
 
 // Every question in every set (enabled or not), one per content id, so review works
@@ -4945,6 +4979,7 @@ function practiceObjective(objId) {
 }
 
 function renderProgress() {
+  renderStorageNote();
   const now = Date.now();
   const stats = loadStats();
   const questions = reviewableQuestions();

@@ -428,6 +428,7 @@ function showUploadResult(result) {
           }
           state.sets = loadUploadedSets();
           state.enabledSetIds.add(newSet.id);
+          requestPersistentStorage();
           renderSetsPanel();
           refreshPoolCount();
           box.style.display = "none";
@@ -1060,6 +1061,28 @@ function recordProgress(s, result) {
   const statsSaved = saveStats(updateStats(loadStats(), outcomes, now));
   const historySaved = saveHistory(addAttempt(loadHistory(), attemptRecord(result, { mode: s.mode, now })));
   if (!statsSaved || !historySaved) showToast(t("storage.progressNotSaved"), { durationMs: 12000 });
+  requestPersistentStorage();
+}
+
+// Asks the browser not to evict this site's data under storage pressure or, in
+// Safari, after days without a visit. Browsers decide; null means unsupported.
+async function requestPersistentStorage() {
+  try {
+    if (!navigator.storage?.persist) return null;
+    return (await navigator.storage.persisted()) || (await navigator.storage.persist());
+  } catch {
+    return null;
+  }
+}
+
+async function renderStorageNote() {
+  let persisted = null;
+  try {
+    persisted = navigator.storage?.persisted ? await navigator.storage.persisted() : null;
+  } catch {
+    persisted = null;
+  }
+  el("#storage-note").hidden = persisted === true;
 }
 
 // Every question in every set (enabled or not), one per content id, so review works
@@ -1104,6 +1127,7 @@ function practiceObjective(objId) {
 }
 
 function renderProgress() {
+  renderStorageNote();
   const now = Date.now();
   const stats = loadStats();
   const questions = reviewableQuestions();

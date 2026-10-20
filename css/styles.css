@@ -516,3 +516,4 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 textarea.modal-input { font-family: ui-monospace, monospace; font-size: 0.82rem; resize: vertical; }
 @media (max-width: 640px) { .flag-row { flex-direction: column; } }
 .time-tag { font-family: ui-monospace, monospace; }
+.csv-export { display: inline-flex; gap: 6px; align-items: center; }

@@ -186,7 +186,14 @@
           <label><input type="checkbox" id="review-filter-incorrect" /> <span data-i18n="results.onlyIncorrect">Show only incorrect</span></label>
           <button id="retake-missed-btn" class="btn" data-i18n="results.retake">Retake missed questions</button>
           <button id="export-json-btn" class="btn" data-i18n="results.exportJson">Export results (JSON)</button>
-          <button id="export-csv-btn" class="btn" data-i18n="results.exportCsv">Export results (CSV)</button>
+          <span class="csv-export">
+            <button id="export-csv-btn" class="btn" data-i18n="results.exportCsv">Export results (CSV)</button>
+            <select id="csv-separator" class="lang-select" data-i18n-title="csv.separator" title="CSV separator">
+              <option value="auto" data-i18n="csv.auto">auto</option>
+              <option value="comma" data-i18n="csv.comma">, (comma)</option>
+              <option value="semicolon" data-i18n="csv.semicolon">; (semicolon)</option>
+            </select>
+          </span>
           <button id="back-to-setup-btn" class="btn" data-i18n="results.back">Back to setup</button>
         </div>
         <div id="review-list" class="review-list"></div>

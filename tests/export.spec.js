@@ -44,3 +44,13 @@ test("JSON export includes points per question and in the summary", async ({ pag
   expect(json.summary.points).toBe(0.75);
   expect(json.questions.find((q) => q.type === "simulation").points).toBe(0.75);
 });
+
+test("an explicit CSV separator overrides the locale guess and is remembered", async ({ page }) => {
+  await finishWithPartialSimulation(page); // en-US browser: auto would pick ","
+  await page.selectOption("#csv-separator", "semicolon");
+  const lines = (await download(page, "#export-csv-btn", "semi.csv")).toString("utf8").replace(/^﻿/, "").split("\r\n");
+  expect(lines[0].startsWith("id;domain;objective")).toBe(true);
+  expect(lines.find((l) => l.includes("Configure the following inbound"))).toContain(";partial;0,75;");
+  await page.reload();
+  await expect(page.locator("#csv-separator")).toHaveValue("semicolon");
+});

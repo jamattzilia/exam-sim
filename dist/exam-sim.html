@@ -526,6 +526,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 textarea.modal-input { font-family: ui-monospace, monospace; font-size: 0.82rem; resize: vertical; }
 @media (max-width: 640px) { .flag-row { flex-direction: column; } }
 .time-tag { font-family: ui-monospace, monospace; }
+.csv-export { display: inline-flex; gap: 6px; align-items: center; }
 </style>
   <!-- Apply a saved theme before first paint so a dark-theme user doesn't see a light flash. -->
   <script>
@@ -704,7 +705,14 @@ textarea.modal-input { font-family: ui-monospace, monospace; font-size: 0.82rem;
           <label><input type="checkbox" id="review-filter-incorrect" /> <span data-i18n="results.onlyIncorrect">Show only incorrect</span></label>
           <button id="retake-missed-btn" class="btn" data-i18n="results.retake">Retake missed questions</button>
           <button id="export-json-btn" class="btn" data-i18n="results.exportJson">Export results (JSON)</button>
-          <button id="export-csv-btn" class="btn" data-i18n="results.exportCsv">Export results (CSV)</button>
+          <span class="csv-export">
+            <button id="export-csv-btn" class="btn" data-i18n="results.exportCsv">Export results (CSV)</button>
+            <select id="csv-separator" class="lang-select" data-i18n-title="csv.separator" title="CSV separator">
+              <option value="auto" data-i18n="csv.auto">auto</option>
+              <option value="comma" data-i18n="csv.comma">, (comma)</option>
+              <option value="semicolon" data-i18n="csv.semicolon">; (semicolon)</option>
+            </select>
+          </span>
           <button id="back-to-setup-btn" class="btn" data-i18n="results.back">Back to setup</button>
         </div>
         <div id="review-list" class="review-list"></div>
@@ -2947,6 +2955,10 @@ const STRINGS = {
     "results.retake": "Retake missed questions",
     "results.exportJson": "Export results (JSON)",
     "results.exportCsv": "Export results (CSV)",
+    "csv.separator": "CSV separator. Russian/European Excel expects \";\", English Excel \",\".",
+    "csv.auto": "auto",
+    "csv.comma": ", (comma)",
+    "csv.semicolon": "; (semicolon)",
     "results.back": "Back to setup",
     "results.pass": "PASS (estimated)",
     "results.fail": "FAIL (estimated)",
@@ -3181,6 +3193,10 @@ const STRINGS = {
     "results.retake": "Перерешать ошибки",
     "results.exportJson": "Экспорт результатов (JSON)",
     "results.exportCsv": "Экспорт результатов (CSV)",
+    "csv.separator": "Разделитель CSV. Русский/европейский Excel ждёт «;», английский — «,».",
+    "csv.auto": "авто",
+    "csv.comma": ", (запятая)",
+    "csv.semicolon": "; (точка с запятой)",
     "results.back": "К настройкам",
     "results.pass": "СДАН (оценка)",
     "results.fail": "НЕ СДАН (оценка)",
@@ -4416,6 +4432,7 @@ function persistSettings() {
     mode: el("#mode-select").value,
     pbqFirst: el("#pbq-first").checked,
     skipFlagged: el("#skip-flagged").checked,
+    csvSeparator: el("#csv-separator").value,
   });
 }
 
@@ -4439,6 +4456,7 @@ function applySavedSettings(saved) {
   if (saved.mode === "exam" || saved.mode === "practice") el("#mode-select").value = saved.mode;
   if (typeof saved.pbqFirst === "boolean") el("#pbq-first").checked = saved.pbqFirst;
   if (typeof saved.skipFlagged === "boolean") el("#skip-flagged").checked = saved.skipFlagged;
+  if (["auto", "comma", "semicolon"].includes(saved.csvSeparator)) el("#csv-separator").value = saved.csvSeparator;
 }
 
 function applyStandardPreset() {
@@ -5578,11 +5596,16 @@ function exportResultsJSON(result) {
 // Excel reads CSV with the list separator from the OS regional settings: ";" wherever
 // the decimal separator is "," (Russian, German, French...), "," elsewhere. Matching
 // it makes a double-click open the file in columns instead of one long column A.
-function csvFormat() {
-  const parts = new Intl.NumberFormat().formatToParts(1.5);
-  const decimal = parts.find((p) => p.type === "decimal")?.value || ".";
-  const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2, useGrouping: false });
-  return { delimiter: decimal === "," ? ";" : ",", number: (n) => number.format(n) };
+// "auto" guesses from the browser locale, which can differ from the Windows regional
+// settings Excel actually uses, so the user can pick. The decimal mark follows the
+// separator the way Excel expects (";" with "0,75", "," with "0.75").
+function csvFormat(choice = el("#csv-separator").value) {
+  let semicolon;
+  if (choice === "semicolon") semicolon = true;
+  else if (choice === "comma") semicolon = false;
+  else semicolon = new Intl.NumberFormat().formatToParts(1.5).find((p) => p.type === "decimal")?.value === ",";
+  const number = new Intl.NumberFormat(semicolon ? "de-DE" : "en-US", { maximumFractionDigits: 2, useGrouping: false });
+  return { delimiter: semicolon ? ";" : ",", number: (n) => number.format(n) };
 }
 
 function csvEscape(value, delimiter) {
@@ -5779,7 +5802,7 @@ function wireSetup() {
   el("#num-questions").addEventListener("input", refreshPoolCount);
   el("#skip-flagged").addEventListener("change", refreshPoolCount);
   el("#start-exam-btn").addEventListener("click", startExam);
-  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle", "#partial-toggle", "#mode-select", "#pbq-first"].forEach((sel) => {
+  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle", "#partial-toggle", "#mode-select", "#pbq-first", "#csv-separator"].forEach((sel) => {
     el(sel).addEventListener("change", persistSettings);
   });
 

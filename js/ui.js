@@ -350,6 +350,7 @@ function persistSettings() {
     mode: el("#mode-select").value,
     pbqFirst: el("#pbq-first").checked,
     skipFlagged: el("#skip-flagged").checked,
+    csvSeparator: el("#csv-separator").value,
   });
 }
 
@@ -373,6 +374,7 @@ function applySavedSettings(saved) {
   if (saved.mode === "exam" || saved.mode === "practice") el("#mode-select").value = saved.mode;
   if (typeof saved.pbqFirst === "boolean") el("#pbq-first").checked = saved.pbqFirst;
   if (typeof saved.skipFlagged === "boolean") el("#skip-flagged").checked = saved.skipFlagged;
+  if (["auto", "comma", "semicolon"].includes(saved.csvSeparator)) el("#csv-separator").value = saved.csvSeparator;
 }
 
 function applyStandardPreset() {
@@ -1512,11 +1514,16 @@ function exportResultsJSON(result) {
 // Excel reads CSV with the list separator from the OS regional settings: ";" wherever
 // the decimal separator is "," (Russian, German, French...), "," elsewhere. Matching
 // it makes a double-click open the file in columns instead of one long column A.
-function csvFormat() {
-  const parts = new Intl.NumberFormat().formatToParts(1.5);
-  const decimal = parts.find((p) => p.type === "decimal")?.value || ".";
-  const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2, useGrouping: false });
-  return { delimiter: decimal === "," ? ";" : ",", number: (n) => number.format(n) };
+// "auto" guesses from the browser locale, which can differ from the Windows regional
+// settings Excel actually uses, so the user can pick. The decimal mark follows the
+// separator the way Excel expects (";" with "0,75", "," with "0.75").
+function csvFormat(choice = el("#csv-separator").value) {
+  let semicolon;
+  if (choice === "semicolon") semicolon = true;
+  else if (choice === "comma") semicolon = false;
+  else semicolon = new Intl.NumberFormat().formatToParts(1.5).find((p) => p.type === "decimal")?.value === ",";
+  const number = new Intl.NumberFormat(semicolon ? "de-DE" : "en-US", { maximumFractionDigits: 2, useGrouping: false });
+  return { delimiter: semicolon ? ";" : ",", number: (n) => number.format(n) };
 }
 
 function csvEscape(value, delimiter) {
@@ -1713,7 +1720,7 @@ function wireSetup() {
   el("#num-questions").addEventListener("input", refreshPoolCount);
   el("#skip-flagged").addEventListener("change", refreshPoolCount);
   el("#start-exam-btn").addEventListener("click", startExam);
-  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle", "#partial-toggle", "#mode-select", "#pbq-first"].forEach((sel) => {
+  ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle", "#partial-toggle", "#mode-select", "#pbq-first", "#csv-separator"].forEach((sel) => {
     el(sel).addEventListener("change", persistSettings);
   });
 

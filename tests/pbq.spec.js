@@ -131,3 +131,21 @@ test.describe("answer limits", () => {
     await expect(page.locator(".option-row input:disabled")).toHaveCount(0);
   });
 });
+
+test("reordering with the keyboard keeps focus on the moved step", async ({ page }) => {
+  await openApp(page);
+  await onlyObjectives(page, [[3, "4.8"]]);
+  await startExam(page, { n: 4 });
+  await goToQuestionOfType(page, "Ordering");
+  const texts = await page.locator(".order-item .order-text").allTextContents();
+  const moving = texts[3];
+  await page.getByRole("button", { name: `Move “${moving}” up` }).focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Space");
+  expect((await page.locator(".order-item .order-text").allTextContents())[0]).toBe(moving);
+  // at the top the up arrow is disabled, so focus moved to the same step's down arrow
+  await expect(page.getByRole("button", { name: `Move “${moving}” down` })).toBeFocused();
+  await page.keyboard.press("Enter");
+  expect((await page.locator(".order-item .order-text").allTextContents())[1]).toBe(moving);
+});

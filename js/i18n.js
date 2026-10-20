@@ -97,6 +97,8 @@ const STRINGS = {
     "q.matching.reuse": "Options can be used more than once.",
     "q.ordering.hint": "Drag the steps (or use the arrows) into the correct order (top = first).",
     "q.ordering.drag": "Drag to reorder",
+    "q.ordering.up": "Move \u201c{item}\u201d up",
+    "q.ordering.down": "Move \u201c{item}\u201d down",
     "q.hotspot.hint": "Click the zone(s) that answer the question.",
 
     "status.correct": "✓ Correct",
@@ -293,6 +295,8 @@ const STRINGS = {
     "q.matching.reuse": "Варианты можно использовать повторно.",
     "q.ordering.hint": "Перетащите шаги (или используйте стрелки) в правильном порядке (сверху — первый).",
     "q.ordering.drag": "Перетащите, чтобы изменить порядок",
+    "q.ordering.up": "Переместить \u00ab{item}\u00bb вверх",
+    "q.ordering.down": "Переместить \u00ab{item}\u00bb вниз",
     "q.hotspot.hint": "Нажмите на зону (зоны), которая отвечает на вопрос.",
 
     "status.correct": "✓ Верно",

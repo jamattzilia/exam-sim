@@ -838,24 +838,16 @@ const QUESTION_RENDERERS = {
           ce("button", {
             class: "btn-link",
             type: "button",
+            "aria-label": t("q.ordering.up", { item: q.items[origIdx] }),
             ...(pos === 0 ? { disabled: "disabled" } : {}),
-            onclick: () => {
-              const next = [...order];
-              [next[pos - 1], next[pos]] = [next[pos], next[pos - 1]];
-              setAnswer(s, q, next);
-              renderExam();
-            },
+            onclick: () => moveOrderItem(s, q, order, pos, -1),
           }, "▲"),
           ce("button", {
             class: "btn-link",
             type: "button",
+            "aria-label": t("q.ordering.down", { item: q.items[origIdx] }),
             ...(pos === order.length - 1 ? { disabled: "disabled" } : {}),
-            onclick: () => {
-              const next = [...order];
-              [next[pos], next[pos + 1]] = [next[pos + 1], next[pos]];
-              setAnswer(s, q, next);
-              renderExam();
-            },
+            onclick: () => moveOrderItem(s, q, order, pos, 1),
           }, "▼"),
         ]),
       ]);
@@ -958,6 +950,18 @@ const QUESTION_RENDERERS = {
     box.appendChild(table);
   },
 };
+
+// Moves a step one place and, because the question re-renders, puts keyboard focus
+// back on the same arrow of the moved step (or the other arrow once it hits an end).
+function moveOrderItem(s, q, order, pos, delta) {
+  const next = [...order];
+  [next[pos], next[pos + delta]] = [next[pos + delta], next[pos]];
+  setAnswer(s, q, next);
+  renderExam();
+  const buttons = elAll("#options-box .order-item")[pos + delta].querySelectorAll(".order-controls button");
+  const [same, other] = delta < 0 ? [buttons[0], buttons[1]] : [buttons[1], buttons[0]];
+  (same.disabled ? other : same).focus();
+}
 
 // Pointer Events rather than HTML5 drag-and-drop, which has no touch support.
 // Mouse can drag a row from anywhere; touch only from the ⠿ handle so swiping

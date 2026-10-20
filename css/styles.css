@@ -499,3 +499,4 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 }
 .shortcuts-hint { margin-top: 10px; font-size: 0.78rem; }
 @media (hover: none) { .shortcuts-hint { display: none; } }
+.field-note { color: var(--text-muted); font-size: 0.8em; }

@@ -310,9 +310,9 @@ function refreshPoolCount() {
   el("#sets-dupes").textContent = removed > 0 ? t("set.duplicates", { n: removed }) : "";
   el("#save-combined-btn").hidden = enabledSets().length < 2;
   el("#pool-count").textContent = pool.length;
-  const maxInput = el("#num-questions");
-  maxInput.max = Math.max(pool.length, 1);
-  if (Number(maxInput.value) > pool.length && pool.length > 0) maxInput.value = pool.length;
+  // Show the available maximum instead of lowering the field: narrowing the filters
+  // for a moment must not permanently shrink the saved question count.
+  el("#num-max").textContent = t("opt.numMax", { n: pool.length });
   el("#start-exam-btn").disabled = pool.length === 0;
   el("#pool-warning").style.display = pool.length === 0 ? "block" : "none";
   persistSettings();

@@ -157,3 +157,17 @@ test("filters persist across reloads", async ({ page }) => {
   expect(checks).toEqual([true, true, true, false, false]);
   expect(await page.isChecked("#timer-toggle")).toBe(false);
 });
+
+test("the question count isn't lowered by temporarily narrowing the filters", async ({ page }) => {
+  await page.fill("#num-questions", "50");
+  await onlyObjectives(page, [[0, "1.3"]]); // pool of 2
+  await page.click("#select-all-domains");
+  await expect(page.locator("#num-questions")).toHaveValue("50");
+  await page.reload();
+  await expect(page.locator("#num-questions")).toHaveValue("50");
+  await expect(page.locator("#num-max")).toHaveText(/68/);
+  await onlyObjectives(page, [[0, "1.3"]]);
+  await expect(page.locator("#num-max")).toHaveText(/2/);
+  await startExam(page, {});
+  await expect(page.locator("#exam-progress")).toHaveText(/of 2$/);
+});

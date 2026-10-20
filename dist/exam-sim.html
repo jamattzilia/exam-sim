@@ -507,6 +507,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 }
 .shortcuts-hint { margin-top: 10px; font-size: 0.78rem; }
 @media (hover: none) { .shortcuts-hint { display: none; } }
+.field-note { color: var(--text-muted); font-size: 0.8em; }
 </style>
   <!-- Apply a saved theme before first paint so a dark-theme user doesn't see a light flash. -->
   <script>
@@ -576,7 +577,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
               </select>
             </div>
             <div class="field-row">
-              <label for="num-questions" data-i18n="opt.num">Number of questions</label>
+              <label for="num-questions"><span data-i18n="opt.num">Number of questions</span> <span id="num-max" class="field-note"></span></label>
               <input type="number" id="num-questions" min="1" value="20" />
             </div>
             <div class="field-row">
@@ -2697,6 +2698,7 @@ const STRINGS = {
     "opt.mode.exam": "Exam — results at the end",
     "opt.mode.practice": "Practice — check each answer",
     "opt.num": "Number of questions",
+    "opt.numMax": "(max {n})",
     "opt.timed": "Timed exam",
     "opt.minutes": "Time limit (minutes)",
     "opt.shuffleQ": "Shuffle question order",
@@ -2892,6 +2894,7 @@ const STRINGS = {
     "opt.mode.exam": "Экзамен — результаты в конце",
     "opt.mode.practice": "Тренировка — проверка каждого ответа",
     "opt.num": "Количество вопросов",
+    "opt.numMax": "(макс. {n})",
     "opt.timed": "С таймером",
     "opt.minutes": "Лимит времени (минут)",
     "opt.shuffleQ": "Перемешивать вопросы",
@@ -4120,9 +4123,9 @@ function refreshPoolCount() {
   el("#sets-dupes").textContent = removed > 0 ? t("set.duplicates", { n: removed }) : "";
   el("#save-combined-btn").hidden = enabledSets().length < 2;
   el("#pool-count").textContent = pool.length;
-  const maxInput = el("#num-questions");
-  maxInput.max = Math.max(pool.length, 1);
-  if (Number(maxInput.value) > pool.length && pool.length > 0) maxInput.value = pool.length;
+  // Show the available maximum instead of lowering the field: narrowing the filters
+  // for a moment must not permanently shrink the saved question count.
+  el("#num-max").textContent = t("opt.numMax", { n: pool.length });
   el("#start-exam-btn").disabled = pool.length === 0;
   el("#pool-warning").style.display = pool.length === 0 ? "block" : "none";
   persistSettings();

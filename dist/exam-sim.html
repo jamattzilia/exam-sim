@@ -511,6 +511,18 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .save-warning { background: var(--bad-bg); color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; font-weight: 600; font-size: 0.9rem; }
 .storage-note { border-color: var(--amber); background: var(--warn-bg); margin-bottom: 20px; padding: 14px 18px; }
 .storage-note p { margin: 0; font-size: 0.9rem; }
+
+/* Flagged questions */
+.review-head .flag-btn { margin-left: auto; font-size: 0.78rem; padding: 0 2px; }
+.flag-btn.flagged { color: var(--amber); }
+.flag-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.flag-row:last-child { border-bottom: none; }
+.flag-info { flex: 1; min-width: 0; }
+.flag-question { font-size: 0.9rem; margin-bottom: 6px; }
+#export-flags-btn { margin-top: 10px; }
+.modal.modal-wide { width: min(720px, 100%); }
+textarea.modal-input { font-family: ui-monospace, monospace; font-size: 0.82rem; resize: vertical; }
+@media (max-width: 640px) { .flag-row { flex-direction: column; } }
 </style>
   <!-- Apply a saved theme before first paint so a dark-theme user doesn't see a light flash. -->
   <script>
@@ -602,6 +614,10 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
             <div class="field-row">
               <label for="pbq-first" data-i18n="opt.pbqFirst" data-i18n-title="opt.pbqFirst.title" title="The real exam usually opens with its performance-based questions">PBQs first</label>
               <input type="checkbox" id="pbq-first" checked />
+            </div>
+            <div class="field-row">
+              <label for="skip-flagged" data-i18n="opt.skipFlagged">Skip questions I flagged</label>
+              <input type="checkbox" id="skip-flagged" checked />
             </div>
             <div class="field-row">
               <label for="weighted-toggle" data-i18n="opt.weighted" data-i18n-title="opt.weighted.title" title="Split the question count across domains by official SY0-701 weights (12/22/18/28/20%)">Official domain weighting</label>
@@ -718,6 +734,15 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
         <h2 data-i18n="progress.history.title">Attempt history</h2>
         <div id="attempt-history"></div>
         <button id="clear-progress-btn" class="btn-link danger" data-i18n="progress.clear">Clear history and review data</button>
+      </div>
+
+      <div class="panel">
+        <h2 data-i18n="flags.title">Flagged questions</h2>
+        <p class="hint" data-i18n="flags.hint">
+          Questions you reported as wrong. Fix the ones from your uploaded sets here, or export them with your notes and ask an LLM to correct them.
+        </p>
+        <div id="flagged-list"></div>
+        <button id="export-flags-btn" class="btn" data-i18n="flags.export">Export flagged questions (JSON)</button>
       </div>
 
       <div class="panel">
@@ -2273,6 +2298,7 @@ const SESSION_KEY = "examsim.session.v1";
 const HISTORY_KEY = "examsim.history.v1";
 const STATS_KEY = "examsim.stats.v1";
 const LANGUAGE_KEY = "examsim.lang.v1";
+const FLAGS_KEY = "examsim.flags.v1";
 // Also read by the inline script in index.html's <head>; keep the key in sync.
 const THEME_KEY = "examsim.theme.v1";
 
@@ -2312,6 +2338,10 @@ function renameUploadedSet(setId, setName) {
   return write(SETS_KEY, loadUploadedSets().map((s) => (s.id === setId ? { ...s, setName } : s)));
 }
 
+function updateUploadedSet(set) {
+  return write(SETS_KEY, loadUploadedSets().map((s) => (s.id === set.id ? set : s)));
+}
+
 function removeUploadedSet(setId) {
   write(SETS_KEY, loadUploadedSets().filter((s) => s.id !== setId));
 }
@@ -2341,6 +2371,15 @@ function clearSession() {
   } catch {
     // storage unavailable; nothing to clear
   }
+}
+
+// Questions the user reported as wrong, keyed by content id: { note, flaggedAt, ... }.
+function loadFlags() {
+  return read(FLAGS_KEY, {});
+}
+
+function saveFlags(flags) {
+  return write(FLAGS_KEY, flags);
 }
 
 function loadLanguage() {
@@ -2384,7 +2423,7 @@ function clearProgress() {
     // storage unavailable; nothing to clear
   }
 }
-return { SESSION_KEY, loadUploadedSets, saveUploadedSets, addUploadedSet, renameUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, loadLanguage, saveLanguage, loadTheme, saveTheme, loadHistory, saveHistory, loadStats, saveStats, clearProgress };
+return { SESSION_KEY, loadUploadedSets, saveUploadedSets, addUploadedSet, renameUploadedSet, updateUploadedSet, removeUploadedSet, loadSettings, saveSettings, loadSession, saveSession, clearSession, loadFlags, saveFlags, loadLanguage, saveLanguage, loadTheme, saveTheme, loadHistory, saveHistory, loadStats, saveStats, clearProgress };
 })();
 
 // js/progress.js
@@ -2699,8 +2738,8 @@ const __mod_js_backup_js = (() => {
 const KIND = "exam-sim-backup";
 const VERSION = 1;
 
-function buildBackup({ sets, settings, history, stats, language, theme }, now = Date.now()) {
-  return { kind: KIND, version: VERSION, exportedAt: new Date(now).toISOString(), data: { sets, settings, history, stats, language, theme } };
+function buildBackup({ sets, settings, history, stats, flags = {}, language, theme }, now = Date.now()) {
+  return { kind: KIND, version: VERSION, exportedAt: new Date(now).toISOString(), data: { sets, settings, history, stats, flags, language, theme } };
 }
 
 const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -2725,6 +2764,9 @@ function parseBackup(raw) {
   const stats = Object.fromEntries(
     Object.entries(isObject(d.stats) ? d.stats : {}).filter(([, e]) => isObject(e) && Number.isInteger(e.box) && Number.isFinite(e.lastSeen))
   );
+  const flags = Object.fromEntries(
+    Object.entries(isObject(d.flags) ? d.flags : {}).filter(([, f]) => isObject(f) && Number.isFinite(f.flaggedAt))
+  );
   return {
     ok: true,
     skippedSets,
@@ -2733,6 +2775,7 @@ function parseBackup(raw) {
       sets,
       history,
       stats,
+      flags,
       settings: isObject(d.settings) ? d.settings : null,
       language: typeof d.language === "string" ? d.language : null,
       theme: typeof d.theme === "string" ? d.theme : null,
@@ -2761,6 +2804,7 @@ function mergeBackup(current, backup) {
     sets: [...current.sets, ...newSets],
     history,
     stats,
+    flags: { ...(backup.flags || {}), ...(current.flags || {}) },
     settings: backup.settings ?? current.settings,
     language: backup.language ?? current.language,
     theme: backup.theme ?? current.theme,
@@ -2938,6 +2982,24 @@ const STRINGS = {
 
     "progress.storageNote":
       "This browser hasn't promised to keep your data: it may clear it when space runs low, and Safari deletes it after 7 days without a visit. Make a backup to be safe.",
+    "opt.skipFlagged": "Skip questions I flagged",
+    "flag.report": "⚑ Report a problem",
+    "flag.flagged": "⚑ Flagged — undo",
+    "flag.prompt": "What's wrong with this question? (optional — e.g. \"the correct answer is B\")",
+    "flag.save": "Flag",
+    "flags.title": "Flagged questions",
+    "flags.hint": "Questions you reported as wrong. Fix the ones from your uploaded sets here, or export them with your notes and ask an LLM to correct them.",
+    "flags.none": "No flagged questions.",
+    "flags.export": "Export flagged questions (JSON)",
+    "flags.edit": "Edit",
+    "flags.unflag": "Unflag",
+    "flags.missing": "(its question set was removed)",
+    "flags.builtin": "built-in — can't be edited",
+    "flags.skipped": "{n} flagged question(s) skipped.",
+    "edit.prompt": "Edit the question as JSON (same format as uploads). Saving clears its flag and its review history.",
+    "edit.save": "Save",
+    "edit.invalid": "This question isn't valid:\n{errors}",
+    "edit.saved": "Question updated.",
     "backup.title": "Backup",
     "backup.hint": "One file with your uploaded sets, attempt history, review data and settings — to keep it safe or move it to another device or browser.",
     "backup.download": "Download backup",
@@ -3150,6 +3212,24 @@ const STRINGS = {
 
     "progress.storageNote":
       "Браузер не гарантирует сохранность ваших данных: он может удалить их при нехватке места, а Safari удаляет их через 7 дней без посещений. На всякий случай сделайте резервную копию.",
+    "opt.skipFlagged": "Пропускать помеченные мной вопросы",
+    "flag.report": "⚑ Сообщить о проблеме",
+    "flag.flagged": "⚑ Помечен — отменить",
+    "flag.prompt": "Что не так с вопросом? (необязательно — например, «правильный ответ B»)",
+    "flag.save": "Пометить",
+    "flags.title": "Помеченные вопросы",
+    "flags.hint": "Вопросы, которые вы отметили как ошибочные. Вопросы из загруженных наборов можно исправить здесь — или экспортировать вместе с заметками и попросить LLM их исправить.",
+    "flags.none": "Помеченных вопросов нет.",
+    "flags.export": "Экспорт помеченных вопросов (JSON)",
+    "flags.edit": "Изменить",
+    "flags.unflag": "Снять пометку",
+    "flags.missing": "(набор с этим вопросом удалён)",
+    "flags.builtin": "встроенный — редактировать нельзя",
+    "flags.skipped": "Помеченных вопросов пропущено: {n}.",
+    "edit.prompt": "Измените вопрос в формате JSON (как при загрузке). После сохранения пометка и история повторения этого вопроса сбрасываются.",
+    "edit.save": "Сохранить",
+    "edit.invalid": "Вопрос некорректен:\n{errors}",
+    "edit.saved": "Вопрос обновлён.",
     "backup.title": "Резервная копия",
     "backup.hint": "Один файл с загруженными наборами, историей попыток, данными повторения и настройками — чтобы не потерять их или перенести на другое устройство или в другой браузер.",
     "backup.download": "Скачать резервную копию",
@@ -3265,8 +3345,14 @@ function showDialog({ message, confirmText = t("dialog.ok"), cancelText = null, 
 
     let field = null;
     if (input) {
-      field = document.createElement("input");
-      field.type = "text";
+      field = document.createElement(input.multiline ? "textarea" : "input");
+      if (input.multiline) {
+        field.rows = 16;
+        field.spellcheck = false;
+        box.classList.add("modal-wide");
+      } else {
+        field.type = "text";
+      }
       field.className = "modal-input";
       field.value = input.value || "";
       field.setAttribute("aria-label", message);
@@ -3309,7 +3395,7 @@ function showDialog({ message, confirmText = t("dialog.ok"), cancelText = null, 
     // Capture phase so exam keyboard shortcuts don't also fire while a dialog is open.
     const onKey = (e) => {
       if (e.key === "Escape") finish(cancelText ? cancelValue : confirmValue());
-      else if (e.key === "Enter" && field && document.activeElement === field) finish(confirmValue());
+      else if (e.key === "Enter" && field && !input.multiline && document.activeElement === field) finish(confirmValue());
       else if (e.key === "Tab") {
         const buttons = [field, cancelBtn, okBtn].filter(Boolean);
         const i = buttons.indexOf(document.activeElement);
@@ -3336,8 +3422,8 @@ function confirmDialog(message, { confirmText = t("dialog.ok"), cancelText = t("
   return showDialog({ message, confirmText, cancelText, danger });
 }
 
-function promptDialog(message, { value = "", confirmText = t("dialog.ok"), cancelText = t("dialog.cancel") } = {}) {
-  return showDialog({ message, confirmText, cancelText, input: { value } });
+function promptDialog(message, { value = "", multiline = false, confirmText = t("dialog.ok"), cancelText = t("dialog.cancel") } = {}) {
+  return showDialog({ message, confirmText, cancelText, input: { value, multiline } });
 }
 
 function alertDialog(message) {
@@ -4011,7 +4097,7 @@ const __mod_js_ui_js = (() => {
   const { DOMAINS, OBJECTIVE_INDEX, EXAM_INFO, allObjectiveIds } = __mod_js_data_objectives_js;
   const { SAMPLE_SET } = __mod_js_data_sampleQuestions_js;
   const { DOMAIN2_21_23_SET } = __mod_js_data_domain2Set_js;
-  const { loadUploadedSets, addUploadedSet, removeUploadedSet, renameUploadedSet, saveUploadedSets, loadSettings, saveSettings, loadSession, saveSession, clearSession, SESSION_KEY, loadLanguage, saveLanguage, loadTheme, saveTheme, loadHistory, saveHistory, loadStats, saveStats, clearProgress } = __mod_js_storage_js;
+  const { loadUploadedSets, addUploadedSet, removeUploadedSet, renameUploadedSet, saveUploadedSets, updateUploadedSet, loadFlags, saveFlags, loadSettings, saveSettings, loadSession, saveSession, clearSession, SESSION_KEY, loadLanguage, saveLanguage, loadTheme, saveTheme, loadHistory, saveHistory, loadStats, saveStats, clearProgress } = __mod_js_storage_js;
   const { updateStats, isDue, isMissed, attemptRecord, addAttempt, objectiveAccuracy } = __mod_js_progress_js;
   const { buildBackup, parseBackup, mergeBackup } = __mod_js_backup_js;
   const { validateQuestionSet, BLANK_TOKEN } = __mod_js_validation_js;
@@ -4074,9 +4160,14 @@ function enabledSets() {
   return allSets().filter((s) => state.enabledSetIds.has(s.id));
 }
 
-// The exam pool: enabled sets, filtered by objective, with cross-set duplicates removed.
+// The exam pool: enabled sets, filtered by objective, with cross-set duplicates and
+// (unless turned off) questions the user flagged as wrong removed.
 function examPool(objectiveIds = [...state.selectedObjectives]) {
-  return dedupeQuestions(buildPool(enabledSets(), objectiveIds));
+  const { questions, removed } = dedupeQuestions(buildPool(enabledSets(), objectiveIds));
+  if (!el("#skip-flagged").checked) return { questions, removed, flagged: 0 };
+  const flags = loadFlags();
+  const kept = questions.filter((q) => !flags[questionId(q)]);
+  return { questions: kept, removed, flagged: questions.length - kept.length };
 }
 
 function showPage(id) {
@@ -4279,8 +4370,11 @@ function updateObjectiveCounts() {
 
 function refreshPoolCount() {
   updateObjectiveCounts();
-  const { questions: pool, removed } = examPool();
-  el("#sets-dupes").textContent = removed > 0 ? t("set.duplicates", { n: removed }) : "";
+  const { questions: pool, removed, flagged } = examPool();
+  el("#sets-dupes").textContent = [
+    removed > 0 ? t("set.duplicates", { n: removed }) : "",
+    flagged > 0 ? t("flags.skipped", { n: flagged }) : "",
+  ].filter(Boolean).join(" ");
   el("#save-combined-btn").hidden = enabledSets().length < 2;
   el("#pool-count").textContent = pool.length;
   // Show the available maximum instead of lowering the field: narrowing the filters
@@ -4308,6 +4402,7 @@ function persistSettings() {
     partialCredit: el("#partial-toggle").checked,
     mode: el("#mode-select").value,
     pbqFirst: el("#pbq-first").checked,
+    skipFlagged: el("#skip-flagged").checked,
   });
 }
 
@@ -4330,6 +4425,7 @@ function applySavedSettings(saved) {
   if (typeof saved.partialCredit === "boolean") el("#partial-toggle").checked = saved.partialCredit;
   if (saved.mode === "exam" || saved.mode === "practice") el("#mode-select").value = saved.mode;
   if (typeof saved.pbqFirst === "boolean") el("#pbq-first").checked = saved.pbqFirst;
+  if (typeof saved.skipFlagged === "boolean") el("#skip-flagged").checked = saved.skipFlagged;
 }
 
 function applyStandardPreset() {
@@ -4674,7 +4770,7 @@ function renderFeedback(q, s) {
   const result = questionResult(q, s.answers[q._key], s.partialCredit !== false);
   const renderBody = REVIEW_BODY_RENDERERS[q.type] || REVIEW_BODY_RENDERERS.choice;
   return ce("div", { class: `review-item feedback ${result.status}` }, [
-    ce("div", { class: "review-head" }, [ce("strong", {}, statusLabel(result))]),
+    ce("div", { class: "review-head" }, [ce("strong", {}, statusLabel(result)), flagButton(q)]),
     renderBody(q, result.given),
     q.explanation ? ce("div", { class: "review-explanation" }, q.explanation) : null,
   ]);
@@ -5021,6 +5117,126 @@ async function finishExam() {
   renderResults(result);
 }
 
+// ----------------------------------------------------------------- Flags
+
+// Toggle for reporting a question as wrong; the note helps when fixing it later.
+function flagButton(q) {
+  const id = questionId(q);
+  const flagged = Boolean(loadFlags()[id]);
+  const button = ce("button", { type: "button", class: `btn-link flag-btn ${flagged ? "flagged" : ""}` }, t(flagged ? "flag.flagged" : "flag.report"));
+  button.addEventListener("click", async () => {
+    const flags = loadFlags();
+    if (flags[id]) {
+      delete flags[id];
+    } else {
+      const note = await promptDialog(t("flag.prompt"), { confirmText: t("flag.save") });
+      if (note === null) return;
+      flags[id] = { note: note.trim(), flaggedAt: Date.now(), setName: q._setName || "", domain: q.domain, question: q.question.slice(0, 200) };
+    }
+    if (!saveFlags(flags)) return alertDialog(t("upload.storageFull"));
+    button.replaceWith(flagButton(q));
+    refreshPoolCount();
+  });
+  return button;
+}
+
+// Flagged questions resolved against the current sets (null if its set was removed).
+function flaggedEntries() {
+  const flags = loadFlags();
+  const byId = new Map(buildPool(allSets(), allObjectiveIds()).map((q) => [questionId(q), q]));
+  return Object.entries(flags)
+    .map(([id, flag]) => ({ id, flag, question: byId.get(id) || null }))
+    .sort((a, b) => b.flag.flaggedAt - a.flag.flaggedAt);
+}
+
+function renderFlaggedList() {
+  const box = el("#flagged-list");
+  box.innerHTML = "";
+  const entries = flaggedEntries();
+  el("#export-flags-btn").hidden = entries.length === 0;
+  if (entries.length === 0) return box.appendChild(ce("p", { class: "hint" }, t("flags.none")));
+  for (const { id, flag, question } of entries) {
+    const set = question && allSets().find((s) => s.id === question._setId);
+    box.appendChild(
+      ce("div", { class: "flag-row" }, [
+        ce("div", { class: "flag-info" }, [
+          ce("div", { class: "review-head" }, [
+            ce("span", { class: "obj-code" }, flag.domain || ""),
+            ce("span", {}, question ? question._setName : t("flags.missing")),
+          ]),
+          ce("div", { class: "flag-question" }, question ? question.question : flag.question),
+          flag.note ? ce("div", { class: "review-explanation" }, flag.note) : null,
+        ]),
+        ce("div", { class: "set-actions" }, [
+          set && !set.builtin ? ce("button", { class: "btn-link", onclick: () => editQuestion(set, question, id) }, t("flags.edit")) : null,
+          set?.builtin ? ce("span", { class: "hint" }, t("flags.builtin")) : null,
+          ce("button", {
+            class: "btn-link danger",
+            onclick: () => {
+              const flags = loadFlags();
+              delete flags[id];
+              saveFlags(flags);
+              renderFlaggedList();
+              refreshPoolCount();
+            },
+          }, t("flags.unflag")),
+        ]),
+      ])
+    );
+  }
+}
+
+// JSON editor for one question of an uploaded set, validated like an upload. Keeps
+// reopening with the user's text until it is valid or cancelled.
+async function editQuestion(set, question, flagId) {
+  let text = JSON.stringify(stripRuntimeFields(question), null, 2);
+  for (;;) {
+    const edited = await promptDialog(t("edit.prompt"), { value: text, multiline: true, confirmText: t("edit.save") });
+    if (edited === null) return;
+    text = edited;
+    let parsed;
+    try {
+      parsed = JSON.parse(edited);
+    } catch (e) {
+      await alertDialog(t("edit.invalid", { errors: e.message }));
+      continue;
+    }
+    const result = validateQuestionSet({ setName: set.setName, questions: [{ ...parsed, id: question.id }] }, set.setName);
+    if (!result.valid) {
+      await alertDialog(t("edit.invalid", { errors: result.errors.join("\n") }));
+      continue;
+    }
+    const fixed = result.set.questions[0];
+    const stored = loadUploadedSets().find((s) => s.id === set.id);
+    if (!stored || !updateUploadedSet({ ...stored, questions: stored.questions.map((q) => (q.id === question.id ? fixed : q)) })) {
+      return alertDialog(t("upload.storageFull"));
+    }
+    // The old version's flag and review history no longer apply.
+    const flags = loadFlags();
+    delete flags[flagId];
+    saveFlags(flags);
+    const stats = loadStats();
+    delete stats[flagId];
+    saveStats(stats);
+    state.sets = loadUploadedSets();
+    renderSetsPanel();
+    refreshPoolCount();
+    renderProgress();
+    showToast(t("edit.saved"));
+    return;
+  }
+}
+
+// Upload-format file of the flagged questions with the user's notes, ready to hand
+// to an LLM (or the set's author) for correction.
+function exportFlagged() {
+  const questions = flaggedEntries()
+    .filter((e) => e.question)
+    .map((e) => ({ ...stripRuntimeFields(e.question), flagNote: e.flag.note || "", fromSet: e.question._setName }));
+  const data = setAsUploadFormat("Flagged questions", questions, "Questions reported as wrong; flagNote says what looked wrong.");
+  downloadFile("flagged-questions.json", JSON.stringify(data, null, 2), "application/json");
+}
+
 // ---------------------------------------------------------------- Progress
 
 // Only answered questions feed spaced repetition: a skipped question says nothing
@@ -5100,6 +5316,7 @@ function practiceObjective(objId) {
 
 function renderProgress() {
   renderStorageNote();
+  renderFlaggedList();
   const now = Date.now();
   const stats = loadStats();
   const questions = reviewableQuestions();
@@ -5426,6 +5643,7 @@ function renderReviewDetails(result, onlyIncorrect) {
         ce("span", { class: "obj-code" }, q.domain),
         ce("span", {}, typeLabel(q.type)),
         ce("span", {}, statusLabel({ status, points: d.points })),
+        flagButton(q),
       ]));
       item.appendChild(ce("div", { class: "review-question" }, q.question));
       const renderBody = REVIEW_BODY_RENDERERS[q.type] || REVIEW_BODY_RENDERERS.choice;
@@ -5485,6 +5703,7 @@ function wireSetup() {
     refreshPoolCount();
   });
   el("#num-questions").addEventListener("input", refreshPoolCount);
+  el("#skip-flagged").addEventListener("change", refreshPoolCount);
   el("#start-exam-btn").addEventListener("click", startExam);
   ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle", "#partial-toggle", "#mode-select", "#pbq-first"].forEach((sel) => {
     el(sel).addEventListener("change", persistSettings);
@@ -5529,6 +5748,7 @@ function downloadBackup() {
     settings: loadSettings(),
     history: loadHistory(),
     stats: loadStats(),
+    flags: loadFlags(),
     language: getLanguage(),
     theme: loadTheme(),
   });
@@ -5554,9 +5774,17 @@ async function restoreBackup(file) {
   const note = parsed.skippedSets ? `\n\n${t("backup.skipped", { n: parsed.skippedSets })}` : "";
   if (!(await confirmDialog(summary + note, { confirmText: t("backup.confirmBtn") }))) return;
 
-  const current = { sets: loadUploadedSets(), history: loadHistory(), stats: loadStats(), settings: loadSettings(), language: getLanguage(), theme: loadTheme() };
+  const current = {
+    sets: loadUploadedSets(),
+    history: loadHistory(),
+    stats: loadStats(),
+    flags: loadFlags(),
+    settings: loadSettings(),
+    language: getLanguage(),
+    theme: loadTheme(),
+  };
   const merged = mergeBackup(current, b);
-  if (![saveUploadedSets(merged.sets), saveHistory(merged.history), saveStats(merged.stats)].every(Boolean)) {
+  if (![saveUploadedSets(merged.sets), saveHistory(merged.history), saveStats(merged.stats), saveFlags(merged.flags)].every(Boolean)) {
     return alertDialog(t("upload.storageFull"));
   }
   if (merged.settings) saveSettings(merged.settings);
@@ -5573,6 +5801,7 @@ async function restoreBackup(file) {
 
 function wireProgress() {
   elAll(".backup-download-btn").forEach((b) => b.addEventListener("click", downloadBackup));
+  el("#export-flags-btn").addEventListener("click", exportFlagged);
   el("#restore-btn").addEventListener("click", () => el("#restore-input").click());
   el("#restore-input").addEventListener("change", (e) => {
     const file = e.target.files[0];

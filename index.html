@@ -97,6 +97,10 @@
               <input type="checkbox" id="pbq-first" checked />
             </div>
             <div class="field-row">
+              <label for="skip-flagged" data-i18n="opt.skipFlagged">Skip questions I flagged</label>
+              <input type="checkbox" id="skip-flagged" checked />
+            </div>
+            <div class="field-row">
               <label for="weighted-toggle" data-i18n="opt.weighted" data-i18n-title="opt.weighted.title" title="Split the question count across domains by official SY0-701 weights (12/22/18/28/20%)">Official domain weighting</label>
               <input type="checkbox" id="weighted-toggle" checked />
             </div>
@@ -211,6 +215,15 @@
         <h2 data-i18n="progress.history.title">Attempt history</h2>
         <div id="attempt-history"></div>
         <button id="clear-progress-btn" class="btn-link danger" data-i18n="progress.clear">Clear history and review data</button>
+      </div>
+
+      <div class="panel">
+        <h2 data-i18n="flags.title">Flagged questions</h2>
+        <p class="hint" data-i18n="flags.hint">
+          Questions you reported as wrong. Fix the ones from your uploaded sets here, or export them with your notes and ask an LLM to correct them.
+        </p>
+        <div id="flagged-list"></div>
+        <button id="export-flags-btn" class="btn" data-i18n="flags.export">Export flagged questions (JSON)</button>
       </div>
 
       <div class="panel">

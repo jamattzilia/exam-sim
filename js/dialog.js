@@ -24,8 +24,14 @@ export function showDialog({ message, confirmText = t("dialog.ok"), cancelText =
 
     let field = null;
     if (input) {
-      field = document.createElement("input");
-      field.type = "text";
+      field = document.createElement(input.multiline ? "textarea" : "input");
+      if (input.multiline) {
+        field.rows = 16;
+        field.spellcheck = false;
+        box.classList.add("modal-wide");
+      } else {
+        field.type = "text";
+      }
       field.className = "modal-input";
       field.value = input.value || "";
       field.setAttribute("aria-label", message);
@@ -68,7 +74,7 @@ export function showDialog({ message, confirmText = t("dialog.ok"), cancelText =
     // Capture phase so exam keyboard shortcuts don't also fire while a dialog is open.
     const onKey = (e) => {
       if (e.key === "Escape") finish(cancelText ? cancelValue : confirmValue());
-      else if (e.key === "Enter" && field && document.activeElement === field) finish(confirmValue());
+      else if (e.key === "Enter" && field && !input.multiline && document.activeElement === field) finish(confirmValue());
       else if (e.key === "Tab") {
         const buttons = [field, cancelBtn, okBtn].filter(Boolean);
         const i = buttons.indexOf(document.activeElement);
@@ -95,8 +101,8 @@ export function confirmDialog(message, { confirmText = t("dialog.ok"), cancelTex
   return showDialog({ message, confirmText, cancelText, danger });
 }
 
-export function promptDialog(message, { value = "", confirmText = t("dialog.ok"), cancelText = t("dialog.cancel") } = {}) {
-  return showDialog({ message, confirmText, cancelText, input: { value } });
+export function promptDialog(message, { value = "", multiline = false, confirmText = t("dialog.ok"), cancelText = t("dialog.cancel") } = {}) {
+  return showDialog({ message, confirmText, cancelText, input: { value, multiline } });
 }
 
 export function alertDialog(message) {

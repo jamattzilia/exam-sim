@@ -7,6 +7,9 @@ import {
   removeUploadedSet,
   renameUploadedSet,
   saveUploadedSets,
+  updateUploadedSet,
+  loadFlags,
+  saveFlags,
   loadSettings,
   saveSettings,
   loadSession,
@@ -104,9 +107,14 @@ function enabledSets() {
   return allSets().filter((s) => state.enabledSetIds.has(s.id));
 }
 
-// The exam pool: enabled sets, filtered by objective, with cross-set duplicates removed.
+// The exam pool: enabled sets, filtered by objective, with cross-set duplicates and
+// (unless turned off) questions the user flagged as wrong removed.
 function examPool(objectiveIds = [...state.selectedObjectives]) {
-  return dedupeQuestions(buildPool(enabledSets(), objectiveIds));
+  const { questions, removed } = dedupeQuestions(buildPool(enabledSets(), objectiveIds));
+  if (!el("#skip-flagged").checked) return { questions, removed, flagged: 0 };
+  const flags = loadFlags();
+  const kept = questions.filter((q) => !flags[questionId(q)]);
+  return { questions: kept, removed, flagged: questions.length - kept.length };
 }
 
 function showPage(id) {
@@ -309,8 +317,11 @@ function updateObjectiveCounts() {
 
 function refreshPoolCount() {
   updateObjectiveCounts();
-  const { questions: pool, removed } = examPool();
-  el("#sets-dupes").textContent = removed > 0 ? t("set.duplicates", { n: removed }) : "";
+  const { questions: pool, removed, flagged } = examPool();
+  el("#sets-dupes").textContent = [
+    removed > 0 ? t("set.duplicates", { n: removed }) : "",
+    flagged > 0 ? t("flags.skipped", { n: flagged }) : "",
+  ].filter(Boolean).join(" ");
   el("#save-combined-btn").hidden = enabledSets().length < 2;
   el("#pool-count").textContent = pool.length;
   // Show the available maximum instead of lowering the field: narrowing the filters
@@ -338,6 +349,7 @@ function persistSettings() {
     partialCredit: el("#partial-toggle").checked,
     mode: el("#mode-select").value,
     pbqFirst: el("#pbq-first").checked,
+    skipFlagged: el("#skip-flagged").checked,
   });
 }
 
@@ -360,6 +372,7 @@ function applySavedSettings(saved) {
   if (typeof saved.partialCredit === "boolean") el("#partial-toggle").checked = saved.partialCredit;
   if (saved.mode === "exam" || saved.mode === "practice") el("#mode-select").value = saved.mode;
   if (typeof saved.pbqFirst === "boolean") el("#pbq-first").checked = saved.pbqFirst;
+  if (typeof saved.skipFlagged === "boolean") el("#skip-flagged").checked = saved.skipFlagged;
 }
 
 function applyStandardPreset() {
@@ -704,7 +717,7 @@ function renderFeedback(q, s) {
   const result = questionResult(q, s.answers[q._key], s.partialCredit !== false);
   const renderBody = REVIEW_BODY_RENDERERS[q.type] || REVIEW_BODY_RENDERERS.choice;
   return ce("div", { class: `review-item feedback ${result.status}` }, [
-    ce("div", { class: "review-head" }, [ce("strong", {}, statusLabel(result))]),
+    ce("div", { class: "review-head" }, [ce("strong", {}, statusLabel(result)), flagButton(q)]),
     renderBody(q, result.given),
     q.explanation ? ce("div", { class: "review-explanation" }, q.explanation) : null,
   ]);
@@ -1051,6 +1064,126 @@ async function finishExam() {
   renderResults(result);
 }
 
+// ----------------------------------------------------------------- Flags
+
+// Toggle for reporting a question as wrong; the note helps when fixing it later.
+function flagButton(q) {
+  const id = questionId(q);
+  const flagged = Boolean(loadFlags()[id]);
+  const button = ce("button", { type: "button", class: `btn-link flag-btn ${flagged ? "flagged" : ""}` }, t(flagged ? "flag.flagged" : "flag.report"));
+  button.addEventListener("click", async () => {
+    const flags = loadFlags();
+    if (flags[id]) {
+      delete flags[id];
+    } else {
+      const note = await promptDialog(t("flag.prompt"), { confirmText: t("flag.save") });
+      if (note === null) return;
+      flags[id] = { note: note.trim(), flaggedAt: Date.now(), setName: q._setName || "", domain: q.domain, question: q.question.slice(0, 200) };
+    }
+    if (!saveFlags(flags)) return alertDialog(t("upload.storageFull"));
+    button.replaceWith(flagButton(q));
+    refreshPoolCount();
+  });
+  return button;
+}
+
+// Flagged questions resolved against the current sets (null if its set was removed).
+function flaggedEntries() {
+  const flags = loadFlags();
+  const byId = new Map(buildPool(allSets(), allObjectiveIds()).map((q) => [questionId(q), q]));
+  return Object.entries(flags)
+    .map(([id, flag]) => ({ id, flag, question: byId.get(id) || null }))
+    .sort((a, b) => b.flag.flaggedAt - a.flag.flaggedAt);
+}
+
+function renderFlaggedList() {
+  const box = el("#flagged-list");
+  box.innerHTML = "";
+  const entries = flaggedEntries();
+  el("#export-flags-btn").hidden = entries.length === 0;
+  if (entries.length === 0) return box.appendChild(ce("p", { class: "hint" }, t("flags.none")));
+  for (const { id, flag, question } of entries) {
+    const set = question && allSets().find((s) => s.id === question._setId);
+    box.appendChild(
+      ce("div", { class: "flag-row" }, [
+        ce("div", { class: "flag-info" }, [
+          ce("div", { class: "review-head" }, [
+            ce("span", { class: "obj-code" }, flag.domain || ""),
+            ce("span", {}, question ? question._setName : t("flags.missing")),
+          ]),
+          ce("div", { class: "flag-question" }, question ? question.question : flag.question),
+          flag.note ? ce("div", { class: "review-explanation" }, flag.note) : null,
+        ]),
+        ce("div", { class: "set-actions" }, [
+          set && !set.builtin ? ce("button", { class: "btn-link", onclick: () => editQuestion(set, question, id) }, t("flags.edit")) : null,
+          set?.builtin ? ce("span", { class: "hint" }, t("flags.builtin")) : null,
+          ce("button", {
+            class: "btn-link danger",
+            onclick: () => {
+              const flags = loadFlags();
+              delete flags[id];
+              saveFlags(flags);
+              renderFlaggedList();
+              refreshPoolCount();
+            },
+          }, t("flags.unflag")),
+        ]),
+      ])
+    );
+  }
+}
+
+// JSON editor for one question of an uploaded set, validated like an upload. Keeps
+// reopening with the user's text until it is valid or cancelled.
+async function editQuestion(set, question, flagId) {
+  let text = JSON.stringify(stripRuntimeFields(question), null, 2);
+  for (;;) {
+    const edited = await promptDialog(t("edit.prompt"), { value: text, multiline: true, confirmText: t("edit.save") });
+    if (edited === null) return;
+    text = edited;
+    let parsed;
+    try {
+      parsed = JSON.parse(edited);
+    } catch (e) {
+      await alertDialog(t("edit.invalid", { errors: e.message }));
+      continue;
+    }
+    const result = validateQuestionSet({ setName: set.setName, questions: [{ ...parsed, id: question.id }] }, set.setName);
+    if (!result.valid) {
+      await alertDialog(t("edit.invalid", { errors: result.errors.join("\n") }));
+      continue;
+    }
+    const fixed = result.set.questions[0];
+    const stored = loadUploadedSets().find((s) => s.id === set.id);
+    if (!stored || !updateUploadedSet({ ...stored, questions: stored.questions.map((q) => (q.id === question.id ? fixed : q)) })) {
+      return alertDialog(t("upload.storageFull"));
+    }
+    // The old version's flag and review history no longer apply.
+    const flags = loadFlags();
+    delete flags[flagId];
+    saveFlags(flags);
+    const stats = loadStats();
+    delete stats[flagId];
+    saveStats(stats);
+    state.sets = loadUploadedSets();
+    renderSetsPanel();
+    refreshPoolCount();
+    renderProgress();
+    showToast(t("edit.saved"));
+    return;
+  }
+}
+
+// Upload-format file of the flagged questions with the user's notes, ready to hand
+// to an LLM (or the set's author) for correction.
+function exportFlagged() {
+  const questions = flaggedEntries()
+    .filter((e) => e.question)
+    .map((e) => ({ ...stripRuntimeFields(e.question), flagNote: e.flag.note || "", fromSet: e.question._setName }));
+  const data = setAsUploadFormat("Flagged questions", questions, "Questions reported as wrong; flagNote says what looked wrong.");
+  downloadFile("flagged-questions.json", JSON.stringify(data, null, 2), "application/json");
+}
+
 // ---------------------------------------------------------------- Progress
 
 // Only answered questions feed spaced repetition: a skipped question says nothing
@@ -1130,6 +1263,7 @@ function practiceObjective(objId) {
 
 function renderProgress() {
   renderStorageNote();
+  renderFlaggedList();
   const now = Date.now();
   const stats = loadStats();
   const questions = reviewableQuestions();
@@ -1456,6 +1590,7 @@ function renderReviewDetails(result, onlyIncorrect) {
         ce("span", { class: "obj-code" }, q.domain),
         ce("span", {}, typeLabel(q.type)),
         ce("span", {}, statusLabel({ status, points: d.points })),
+        flagButton(q),
       ]));
       item.appendChild(ce("div", { class: "review-question" }, q.question));
       const renderBody = REVIEW_BODY_RENDERERS[q.type] || REVIEW_BODY_RENDERERS.choice;
@@ -1515,6 +1650,7 @@ function wireSetup() {
     refreshPoolCount();
   });
   el("#num-questions").addEventListener("input", refreshPoolCount);
+  el("#skip-flagged").addEventListener("change", refreshPoolCount);
   el("#start-exam-btn").addEventListener("click", startExam);
   ["#timer-toggle", "#timer-minutes", "#shuffle-questions", "#shuffle-options", "#weighted-toggle", "#partial-toggle", "#mode-select", "#pbq-first"].forEach((sel) => {
     el(sel).addEventListener("change", persistSettings);
@@ -1559,6 +1695,7 @@ function downloadBackup() {
     settings: loadSettings(),
     history: loadHistory(),
     stats: loadStats(),
+    flags: loadFlags(),
     language: getLanguage(),
     theme: loadTheme(),
   });
@@ -1584,9 +1721,17 @@ async function restoreBackup(file) {
   const note = parsed.skippedSets ? `\n\n${t("backup.skipped", { n: parsed.skippedSets })}` : "";
   if (!(await confirmDialog(summary + note, { confirmText: t("backup.confirmBtn") }))) return;
 
-  const current = { sets: loadUploadedSets(), history: loadHistory(), stats: loadStats(), settings: loadSettings(), language: getLanguage(), theme: loadTheme() };
+  const current = {
+    sets: loadUploadedSets(),
+    history: loadHistory(),
+    stats: loadStats(),
+    flags: loadFlags(),
+    settings: loadSettings(),
+    language: getLanguage(),
+    theme: loadTheme(),
+  };
   const merged = mergeBackup(current, b);
-  if (![saveUploadedSets(merged.sets), saveHistory(merged.history), saveStats(merged.stats)].every(Boolean)) {
+  if (![saveUploadedSets(merged.sets), saveHistory(merged.history), saveStats(merged.stats), saveFlags(merged.flags)].every(Boolean)) {
     return alertDialog(t("upload.storageFull"));
   }
   if (merged.settings) saveSettings(merged.settings);
@@ -1603,6 +1748,7 @@ async function restoreBackup(file) {
 
 function wireProgress() {
   elAll(".backup-download-btn").forEach((b) => b.addEventListener("click", downloadBackup));
+  el("#export-flags-btn").addEventListener("click", exportFlagged);
   el("#restore-btn").addEventListener("click", () => el("#restore-input").click());
   el("#restore-input").addEventListener("change", (e) => {
     const file = e.target.files[0];

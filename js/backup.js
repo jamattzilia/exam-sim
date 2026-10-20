@@ -5,8 +5,8 @@ import { MAX_ATTEMPTS } from "./progress.js";
 const KIND = "exam-sim-backup";
 const VERSION = 1;
 
-export function buildBackup({ sets, settings, history, stats, language, theme }, now = Date.now()) {
-  return { kind: KIND, version: VERSION, exportedAt: new Date(now).toISOString(), data: { sets, settings, history, stats, language, theme } };
+export function buildBackup({ sets, settings, history, stats, flags = {}, language, theme }, now = Date.now()) {
+  return { kind: KIND, version: VERSION, exportedAt: new Date(now).toISOString(), data: { sets, settings, history, stats, flags, language, theme } };
 }
 
 const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -31,6 +31,9 @@ export function parseBackup(raw) {
   const stats = Object.fromEntries(
     Object.entries(isObject(d.stats) ? d.stats : {}).filter(([, e]) => isObject(e) && Number.isInteger(e.box) && Number.isFinite(e.lastSeen))
   );
+  const flags = Object.fromEntries(
+    Object.entries(isObject(d.flags) ? d.flags : {}).filter(([, f]) => isObject(f) && Number.isFinite(f.flaggedAt))
+  );
   return {
     ok: true,
     skippedSets,
@@ -39,6 +42,7 @@ export function parseBackup(raw) {
       sets,
       history,
       stats,
+      flags,
       settings: isObject(d.settings) ? d.settings : null,
       language: typeof d.language === "string" ? d.language : null,
       theme: typeof d.theme === "string" ? d.theme : null,
@@ -67,6 +71,7 @@ export function mergeBackup(current, backup) {
     sets: [...current.sets, ...newSets],
     history,
     stats,
+    flags: { ...(backup.flags || {}), ...(current.flags || {}) },
     settings: backup.settings ?? current.settings,
     language: backup.language ?? current.language,
     theme: backup.theme ?? current.theme,

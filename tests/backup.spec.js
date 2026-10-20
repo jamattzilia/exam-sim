@@ -34,7 +34,10 @@ test.describe("backup format", () => {
       language: "ru",
       theme: "dark",
     };
+    current.flags = { qa: { note: "mine", flaggedAt: 1 } };
+    backup.flags = { qa: { note: "theirs", flaggedAt: 2 }, qd: { note: "", flaggedAt: 3 } };
     const m = mergeBackup(current, backup);
+    expect(m.flags).toEqual({ qa: { note: "mine", flaggedAt: 1 }, qd: { note: "", flaggedAt: 3 } });
     expect(m.sets.map((s) => s.id)).toEqual(["up-1", "up-2"]);
     expect(m.history.map((a) => a.finishedAt)).toEqual([1, 2]);
     expect(m.stats).toEqual({ qa: { box: 3, lastSeen: 200 }, qb: { box: 0, lastSeen: 500 }, qc: { box: 1, lastSeen: 50 } });

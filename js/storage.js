@@ -8,6 +8,7 @@ export const SESSION_KEY = "examsim.session.v1";
 const HISTORY_KEY = "examsim.history.v1";
 const STATS_KEY = "examsim.stats.v1";
 const LANGUAGE_KEY = "examsim.lang.v1";
+const FLAGS_KEY = "examsim.flags.v1";
 // Also read by the inline script in index.html's <head>; keep the key in sync.
 const THEME_KEY = "examsim.theme.v1";
 
@@ -47,6 +48,10 @@ export function renameUploadedSet(setId, setName) {
   return write(SETS_KEY, loadUploadedSets().map((s) => (s.id === setId ? { ...s, setName } : s)));
 }
 
+export function updateUploadedSet(set) {
+  return write(SETS_KEY, loadUploadedSets().map((s) => (s.id === set.id ? set : s)));
+}
+
 export function removeUploadedSet(setId) {
   write(SETS_KEY, loadUploadedSets().filter((s) => s.id !== setId));
 }
@@ -76,6 +81,15 @@ export function clearSession() {
   } catch {
     // storage unavailable; nothing to clear
   }
+}
+
+// Questions the user reported as wrong, keyed by content id: { note, flaggedAt, ... }.
+export function loadFlags() {
+  return read(FLAGS_KEY, {});
+}
+
+export function saveFlags(flags) {
+  return write(FLAGS_KEY, flags);
 }
 
 export function loadLanguage() {
